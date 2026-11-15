@@ -146,7 +146,7 @@ func TestGroupRepository_DeleteCascade_PreservesApiKeyGroupID(t *testing.T) {
 	require.Nil(t, keyAfter.Group)
 }
 
-func TestGroupRepository_DeleteCascade_PromotesNextAPIKeyGroup(t *testing.T) {
+func TestGroupRepository_DeleteCascade_PreservesOtherAPIKeyGroup(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	entClient := tx.Client()
@@ -175,24 +175,36 @@ func TestGroupRepository_DeleteCascade_PromotesNextAPIKeyGroup(t *testing.T) {
 	}
 	require.NoError(t, userRepo.Create(ctx, user))
 
+	deletedGroupKey := &service.APIKey{
+		UserID:  user.ID,
+		Key:     uniqueTestValue(t, "sk-test-delete-cascade-target"),
+		Name:    "deleted group key",
+		GroupID: &targetGroup.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, apiKeyRepo.Create(ctx, deletedGroupKey))
 	key := &service.APIKey{
-		UserID:   user.ID,
-		Key:      uniqueTestValue(t, "sk-test-delete-cascade-promote"),
-		Name:     "promote next group",
-		GroupID:  &targetGroup.ID,
-		GroupIDs: []int64{targetGroup.ID, nextGroup.ID},
-		Status:   service.StatusActive,
+		UserID:  user.ID,
+		Key:     uniqueTestValue(t, "sk-test-delete-cascade-preserved"),
+		Name:    "preserved group key",
+		GroupID: &nextGroup.ID,
+		Status:  service.StatusActive,
 	}
 	require.NoError(t, apiKeyRepo.Create(ctx, key))
 
 	_, err = groupRepo.DeleteCascade(ctx, targetGroup.ID)
 	require.NoError(t, err)
 
+	deletedGroupKeyAfter, err := apiKeyRepo.GetByID(ctx, deletedGroupKey.ID)
+	require.NoError(t, err)
+	require.NotNil(t, deletedGroupKeyAfter.GroupID)
+	require.Equal(t, targetGroup.ID, *deletedGroupKeyAfter.GroupID)
+	require.Nil(t, deletedGroupKeyAfter.Group)
+
 	keyAfter, err := apiKeyRepo.GetByID(ctx, key.ID)
 	require.NoError(t, err)
 	require.NotNil(t, keyAfter.GroupID)
 	require.Equal(t, nextGroup.ID, *keyAfter.GroupID)
-	require.Equal(t, []int64{nextGroup.ID}, keyAfter.GroupIDs)
 	require.NotNil(t, keyAfter.Group)
 	require.Equal(t, nextGroup.ID, keyAfter.Group.ID)
 }
