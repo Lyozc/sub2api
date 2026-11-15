@@ -106,7 +106,9 @@ func TestKlingStudioTaskStatus(t *testing.T) {
 		got := KlingStudioResponse(KlingEndpointQueryVideo, &KlingTaskResult{TaskID: "123", Status: upstream, Message: "reason"})
 		require.Equal(t, want, got["status"])
 		if want == "failed" {
-			require.Equal(t, "reason", got["error"].(gin.H)["message"])
+			errResponse, ok := got["error"].(gin.H)
+			require.True(t, ok)
+			require.Equal(t, "reason", errResponse["message"])
 		}
 	}
 	for submit, query := range map[KlingEndpoint]KlingEndpoint{

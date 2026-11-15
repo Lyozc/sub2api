@@ -119,19 +119,19 @@ func BuildKlingStudioRequest(body []byte) (KlingEndpoint, []byte, string, error)
 		switch field {
 		case "mode":
 			if value.Type != gjson.String || (value.String() != "std" && value.String() != "pro") {
-				return "", nil, "", errors.New("Kling mode must be std or pro")
+				return "", nil, "", errors.New("kling mode must be std or pro")
 			}
 		case "sound":
 			if value.Type != gjson.String || (value.String() != "on" && value.String() != "off") {
-				return "", nil, "", errors.New("Kling sound must be on or off")
+				return "", nil, "", errors.New("kling sound must be on or off")
 			}
 		case "negative_prompt":
 			if value.Type != gjson.String || len([]rune(value.String())) > 2500 {
-				return "", nil, "", errors.New("Kling negative_prompt must be a string of at most 2500 characters")
+				return "", nil, "", errors.New("kling negative_prompt must be a string of at most 2500 characters")
 			}
 		case "cfg_scale":
 			if value.Type != gjson.Number || value.Float() < 0 || value.Float() > 1 {
-				return "", nil, "", errors.New("Kling cfg_scale must be a number between 0 and 1")
+				return "", nil, "", errors.New("kling cfg_scale must be a number between 0 and 1")
 			}
 			payload[field] = value.Float()
 			continue
@@ -209,7 +209,7 @@ func (s *OpenAIGatewayService) ForwardKlingStudioContent(ctx context.Context, c 
 	status, _ := json.Marshal(map[string]string{"status": "completed", "video_url": result.URL})
 	contentURL, err := grokMediaPublicVideoContentURL(status, result.TaskID)
 	if err != nil || contentURL == "" {
-		return errors.New("Kling task returned an unsupported content URL")
+		return errors.New("kling task returned an unsupported content URL")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, contentURL, nil)
 	if err != nil {
@@ -221,11 +221,11 @@ func (s *OpenAIGatewayService) ForwardKlingStudioContent(ctx context.Context, c 
 	}
 	resp, err := klingMediaContentClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Kling content download failed: %s", sanitizeStreamError(err))
+		return fmt.Errorf("kling content download failed: %s", sanitizeStreamError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
-		return fmt.Errorf("Kling content download returned status %d", resp.StatusCode)
+		return fmt.Errorf("kling content download returned status %d", resp.StatusCode)
 	}
 	return writeGrokMediaContentResponse(c, resp)
 }

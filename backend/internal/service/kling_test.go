@@ -27,11 +27,15 @@ func TestBuildKlingJWTClaims(t *testing.T) {
 	if err != nil || !parsed.Valid {
 		t.Fatalf("invalid token: %v", err)
 	}
-	claims := parsed.Claims.(jwt.MapClaims)
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		t.Fatalf("unexpected claims type %T", parsed.Claims)
+	}
 	if claims["iss"] != "ak" {
 		t.Fatalf("issuer = %v", claims["iss"])
 	}
-	if claims["exp"].(float64) != float64(now.Add(30*time.Minute).Unix()) {
+	expires, ok := claims["exp"].(float64)
+	if !ok || expires != float64(now.Add(30*time.Minute).Unix()) {
 		t.Fatalf("unexpected exp: %v", claims["exp"])
 	}
 }
