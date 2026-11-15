@@ -77,6 +77,14 @@ func (h *OpenAIGatewayHandler) handleKlingResponse(c *gin.Context, endpoint serv
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
+	referenceSeconds := 0
+	if !strings.HasPrefix(string(endpoint), "query") {
+		referenceSeconds, err = service.KlingReferenceDurationSeconds(c.Request.Context(), body)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_reference_video", err.Error())
+			return
+		}
+	}
 	var inflightDone func()
 	if !strings.HasPrefix(string(endpoint), "query") {
 		subscription, _ := middleware.GetSubscriptionFromContext(c)
@@ -89,7 +97,7 @@ func (h *OpenAIGatewayHandler) handleKlingResponse(c *gin.Context, endpoint serv
 		inflightDone, err = reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{
 			Model: service.KlingBillingModel(model, body), BodyBytes: len(body), Kind: kind, Units: units,
 			VideoResolution:      service.KlingRequestResolution(body),
-			VideoDurationSeconds: service.KlingRequestDurationSeconds(body),
+			VideoDurationSeconds: service.KlingRequestDurationSeconds(body) + referenceSeconds,
 		})
 		if err != nil {
 			status, code, message, retryAfter := billingErrorDetails(err)
@@ -104,6 +112,10 @@ func (h *OpenAIGatewayHandler) handleKlingResponse(c *gin.Context, endpoint serv
 	ctx := c.Request.Context()
 	selection, err := h.selectKlingAccount(ctx, apiKey, subject.UserID, taskID, model)
 	if err != nil || selection == nil || selection.Account == nil {
+		if taskID != "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Video request not found"}})
+			return
+		}
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"type": "kling_no_eligible_account", "message": "No eligible Kling accounts"}})
 		return
 	}
@@ -151,24 +163,39 @@ func (h *OpenAIGatewayHandler) handleKlingResponse(c *gin.Context, endpoint serv
 		if result.DurationSeconds <= 0 {
 			result.DurationSeconds = service.KlingRequestDurationSeconds(body)
 		}
+		result.DurationSeconds += referenceSeconds
 		h.recordKlingUsage(c, apiKey, subject, account, model, taskID, body, result)
 	}
 	if responseMode == "studio" {
 		if result.TaskID == "" {
 			result.TaskID = taskID
 		}
-		c.JSON(http.StatusOK, service.KlingStudioResponse(endpoint, result))
+		reply := service.KlingStudioResponse(endpoint, result)
+		if !strings.HasPrefix(string(endpoint), "query") && result.VideoCount > 0 {
+			reply["billable_duration_seconds"] = result.DurationSeconds
+		}
+		c.JSON(http.StatusOK, reply)
 	}
 }
 
 func (h *OpenAIGatewayHandler) selectKlingAccount(ctx context.Context, apiKey *service.APIKey, userID int64, taskID, model string) (*service.AccountSelectionResult, error) {
 	if taskID != "" {
 		accountID, err := h.gatewayService.ResolveGrokMediaVideoRequestAccount(ctx, apiKey.GroupID, taskID, userID, apiKey.ID)
-		if err == nil && accountID > 0 {
-			hash := service.GrokMediaVideoRequestSessionHashV2(taskID, userID)
-			selection, _, selectErr := h.gatewayService.SelectMediaVideoRequestAccount(ctx, apiKey.GroupID, hash, accountID, model, service.PlatformKling)
-			return selection, selectErr
+		if err != nil || accountID <= 0 {
+			return nil, service.ErrNoAvailableAccounts
 		}
+		hash := service.GrokMediaVideoRequestSessionHashV2(taskID, userID)
+		selection, _, selectErr := h.gatewayService.SelectMediaVideoRequestAccount(ctx, apiKey.GroupID, hash, accountID, model, service.PlatformKling)
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		if selection == nil || selection.Account == nil || selection.Account.ID != accountID {
+			if selection != nil && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			return nil, service.ErrNoAvailableAccounts
+		}
+		return selection, nil
 	}
 	hash := service.GrokMediaVideoRequestSessionHashV2(taskID, userID)
 	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(

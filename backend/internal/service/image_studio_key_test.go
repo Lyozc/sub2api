@@ -121,7 +121,6 @@ func TestEnsureImageStudioKeyForGroup_ReusesExisting(t *testing.T) {
 		Name:      ImageStudioKeyName,
 		Status:    StatusAPIKeyActive,
 		GroupID:   &groupID,
-		GroupIDs:  []int64{groupID},
 		Group:     &Group{ID: groupID, Name: "生图", Platform: PlatformOpenAI},
 		CreatedAt: time.Now().Add(-time.Hour),
 	}

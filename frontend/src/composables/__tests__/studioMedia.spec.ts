@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readVideoDuration } from '../studioMedia'
+import { imageFileExtension, readVideoDuration } from '../studioMedia'
+
+describe('image download extensions', () => {
+  it.each([
+    ['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/webp', 'webp'],
+    ['image/gif', 'gif'], ['image/svg+xml', 'svg'], ['', 'png']
+  ])('names %s files with .%s', (type, extension) => {
+    expect(imageFileExtension(new Blob([], { type }))).toBe(extension)
+  })
+})
 
 describe('video source duration', () => {
   let video: HTMLVideoElement

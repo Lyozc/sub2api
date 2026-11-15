@@ -1212,6 +1212,11 @@ export default {
       bedrockApiKeyRequired: 'Please enter Bedrock API Key',
       bedrockApiKeyLeaveEmpty: 'Leave empty to keep current key',
       apiKeyIsRequired: 'API Key is required',
+      kling: {
+        apiKeyHint: "Enter Access Key{'|'}Secret Key. For kling-multi, join officialAccessKey and officialSecretKey from config.json with {'|'}. The dashboard API key is a separate credential.",
+        baseUrlHint: 'Use the Kling relay root URL reachable from the sub2api server, for example http://relay-host:8020. In Docker, 127.0.0.1 refers to the container itself.',
+        invalidApiKey: "Enter Access Key{'|'}Secret Key (officialAccessKey{'|'}officialSecretKey for kling-multi). A dashboard API key alone cannot be used."
+      },
       leaveEmptyToKeep: 'Leave empty to keep current key',
       // Upstream type
       upstream: {

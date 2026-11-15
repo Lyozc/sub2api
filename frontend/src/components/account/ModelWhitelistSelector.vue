@@ -157,6 +157,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
 import { supportsUpstreamModelSync } from '@/constants/platformCatalog'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isValidKlingApiKey } from '@/utils/klingCredentials'
 
 const { t } = useI18n()
 
@@ -321,6 +322,11 @@ const syncUpstreamModels = async () => {
   const syncVersion = upstreamSyncVersion
   const accountId = props.accountId
   const previewCredentials = props.syncCredentials
+  if (!accountId && previewCredentials?.platform === 'kling' &&
+      !isValidKlingApiKey(String(previewCredentials.api_key || ''))) {
+    appStore.showError(t('admin.accounts.kling.invalidApiKey'))
+    return
+  }
   const isCurrentSync = () => syncVersion === upstreamSyncVersion
   isSyncingUpstream.value = true
   try {

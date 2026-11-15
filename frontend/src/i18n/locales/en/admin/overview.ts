@@ -1099,6 +1099,15 @@ export default {
         notConfigured: 'Not configured'
       },
       videoPricing: {
+        fallbackPriceHint: "Uses shared or existing pricing",
+        pricePerSecondUnit: "USD/sec",
+        entryExample: "Each card prices only the model in its heading. Enter USD per second: 0.10 × 10 billable seconds × 1 multiplier = $1.00. Zero means free; blank uses shared or existing pricing.",
+        afterMultiplier: "After multiplier: {price} / sec",
+        unsupportedResolution: "Not supported",
+        inheritPrice: "Use shared rate",
+        klingDescription: "Configure Kling prices in USD per second. Set shared 720p / 1080p rates, then override each model below. Configure 4K on supported model rows. Empty cells retain the existing pricing fallback; they do not mean free.",
+        klingOverridesDescription: "Enter the per-second price for 720p, 1080p or 4K inside the matching model card. Gray fields marked “Not supported” need no price. Aliases share one rate. A matching entry in “Per-model group pricing” still takes precedence.",
+        klingModeHint: "Cost = per-second price × billable duration × effective multiplier. Billable duration includes output video and server-verified input video duration. Uses the group multiplier by default, or the independent video multiplier when enabled.",
         title: 'Video Generation Pricing',
         description:
           'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',

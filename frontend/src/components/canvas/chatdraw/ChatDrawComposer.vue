@@ -13,7 +13,7 @@
           ref="settingsButton"
           type="button"
           class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border bg-white/95 px-3 text-xs text-gray-700 shadow-sm backdrop-blur transition-colors hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-dark-800/95 dark:text-gray-200 dark:hover:border-dark-400"
-          :class="settingsOpen ? 'border-gray-900 dark:border-gray-200' : 'border-gray-200 dark:border-dark-600'"
+          :class="settingsOpen ? 'border-emerald-400 dark:border-emerald-500' : 'border-gray-200 dark:border-dark-600'"
           :title="`${t('canvasChat.settings')}: ${settingsSummary}`"
           :aria-label="`${t('canvasChat.settings')}: ${settingsSummary}`"
           :aria-expanded="settingsOpen"
@@ -32,7 +32,7 @@
           <section>
             <h3 class="mb-2 text-xs font-bold text-gray-500 dark:text-gray-400">{{ t('canvasChat.imageSettings') }}</h3>
             <div class="flex flex-wrap items-center gap-2">
-              <ChatDrawToolbarSelect :model-value="model" :options="modelOptions" :label="t('imageStudio.model')" :empty-text="t('imageStudio.noImageModels')" @change="setModel" />
+              <ChatDrawToolbarSelect :model-value="selectedModel" :options="modelOptions" :label="t('imageStudio.model')" :empty-text="t('imageStudio.noImageModels')" @change="setModel" />
               <ChatDrawToolbarSelect :model-value="ratio" :options="ratioOptions" :label="t('canvas.aspectRatio')" @change="setRatio" />
             </div>
             <div class="mt-3 space-y-3">
@@ -47,7 +47,7 @@
                     :class="ratio === 'auto'
                       ? 'border-gray-200 bg-gray-100 text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-500'
                       : resolution === option.value
-                        ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                        ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
                         : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
                     :disabled="ratio === 'auto'"
                     :aria-pressed="resolution === option.value"
@@ -64,7 +64,7 @@
                     type="button"
                     class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     :class="quality === option.value
-                      ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
                       : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
                     :aria-pressed="quality === option.value"
                     @click="setQuality(option.value)"
@@ -80,7 +80,7 @@
                     type="button"
                     class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     :class="count === n
-                      ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
                       : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
                     :aria-pressed="count === n"
                     @click="setCount(n)"
@@ -112,7 +112,7 @@
                     type="button"
                     class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     :class="format === option.value
-                      ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
                       : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
                     :aria-pressed="format === option.value"
                     @click="setFormat(option.value)"
@@ -185,7 +185,7 @@
 
     <!-- 输入卡片 -->
     <form
-      class="relative flex flex-col gap-2 rounded-[1.4rem] border border-gray-200/90 bg-white p-2.5 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] transition-colors dark:border-dark-600 dark:bg-dark-900 dark:shadow-[0_10px_28px_rgba(0,0,0,0.38)]"
+      class="relative flex flex-col gap-2 rounded-[1.4rem] border border-gray-200/90 bg-white p-2.5 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] transition-colors focus-within:border-emerald-300 focus-within:shadow-[0_12px_34px_-14px_rgba(5,150,105,0.3)] dark:border-dark-600 dark:bg-dark-900 dark:shadow-[0_10px_28px_rgba(0,0,0,0.38)] dark:focus-within:border-emerald-700"
       @submit.prevent="submit"
       @click="focus"
     >
@@ -271,7 +271,7 @@
           type="submit"
           class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all"
           :class="canSend
-            ? 'bg-gray-900 text-white shadow-[0_10px_24px_-14px_rgba(15,23,42,0.9)] hover:-translate-y-px hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200'
+            ? 'bg-emerald-600 text-white shadow-[0_10px_24px_-14px_rgba(5,150,105,0.95)] hover:-translate-y-px hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400'
             : 'cursor-not-allowed border border-gray-200 bg-gray-100 text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-500'"
           :disabled="!canSend"
           :aria-label="t('canvasChat.send')"
@@ -301,7 +301,7 @@ import { models } from '@/composables/useImageStudioEngine'
 import {
   CHAT_RATIOS, CHAT_RESOLUTIONS, CHAT_COUNTS, QUALITIES, MAX_REFS, MAX_CHAT_COUNT,
   GIF_FRAMES_MIN, GIF_FRAMES_MAX, GIF_FRAME_MS_MIN, GIF_FRAME_MS_MAX,
-  draftText, draftRefs, ratio, resolution, quality, count, format, gifFrames, gifFrameMs, model, polishEnabled, polishing, busy, turns, polishDraft,
+  draftText, draftRefs, ratio, resolution, quality, count, format, gifFrames, gifFrameMs, model, modelGroupId, polishEnabled, polishing, busy, turns, polishDraft,
   saveSettings, addDraftRefs, removeDraftRef, sendDraft, stopAll,
   clampCount, clampGifFrames, clampGifFrameMs, type ChatQuality, type ChatFormat, type ChatResolution
 } from '@/composables/useChatDrawEngine'
@@ -321,16 +321,10 @@ const running = computed(() => turns.value.some(x => x.status === 'running'))
 const canSend = computed(() => !busy.value && Boolean(draftText.value.trim()) && Boolean(model.value))
 const canPolish = computed(() => !polishing.value && Boolean(draftText.value.trim()))
 
-const modelOptions = computed<ToolbarOption[]>(() => {
-  const seen = new Set<string>()
-  const out: ToolbarOption[] = []
-  for (const m of models.value) {
-    if (seen.has(m.id)) continue
-    seen.add(m.id)
-    out.push({ value: m.id, label: m.id, hint: m.group_name || undefined })
-  }
-  return out
-})
+const selectedModel = computed(() => `${modelGroupId.value ?? 0}:${model.value}`)
+const modelOptions = computed<ToolbarOption[]>(() => models.value.map(option => ({
+  value: `${option.group_id}:${option.id}`, label: option.id, hint: option.group_name || undefined,
+})))
 const ratioOptions = computed<ToolbarOption[]>(() => [
   { value: 'auto', label: t('canvasChat.ratioAuto') },
   ...CHAT_RATIOS.map(r => ({ value: r.value, label: r.value }))
@@ -405,7 +399,13 @@ watch(settingsOpen, open => {
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onSettingsPointer))
 
 // 工具条选择回写引擎设置
-function setModel(v: ToolbarValue) { model.value = String(v); saveSettings() }
+function setModel(v: ToolbarValue) {
+  const option = models.value.find(option => `${option.group_id}:${option.id}` === String(v))
+  if (!option) return
+  model.value = option.id
+  modelGroupId.value = option.group_id
+  saveSettings()
+}
 function setRatio(v: ToolbarValue) { ratio.value = String(v); saveSettings() }
 function setResolution(v: ChatResolution) { resolution.value = v; saveSettings() }
 function setQuality(v: ToolbarValue) { quality.value = v as ChatQuality; saveSettings() }

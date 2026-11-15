@@ -452,6 +452,27 @@ describe('chat draw engine sessions', () => {
     expect(e.draftText.value).toBe('again polished')
   })
 
+  it('keeps an image deletion when another engine completes work from a stale turn', async () => {
+    const first = await import('../useChatDrawEngine')
+    await first.initChatDraw()
+    vi.stubGlobal('fetch', okFetch())
+    first.count.value = 2
+    await send(first, 'two images')
+    await settle()
+    const deletedId = first.turns.value[0].images[0].id
+    const turnId = first.turns.value[0].id
+    vi.resetModules()
+    const second = await import('../useChatDrawEngine')
+    await second.initChatDraw()
+    expect(second.turns.value[0].images).toHaveLength(2)
+    await first.deleteChatAsset(turnId, deletedId)
+    await second.variantOf(second.turns.value[0])
+    await settle()
+    const stored = await second.listChatAssetTurns()
+    expect(stored[0].images.some(image => image.id === deletedId)).toBe(false)
+    expect(stored[0].images.filter(image => image.status === 'done')).toHaveLength(2)
+  })
+
   it('deleting a turn updates session counts and survives reload', async () => {
     const e = await import('../useChatDrawEngine')
     await e.initChatDraw()

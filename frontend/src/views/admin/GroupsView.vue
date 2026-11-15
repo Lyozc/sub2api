@@ -1086,7 +1086,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(createForm.platform)"
           class="border-t pt-4"
@@ -1097,7 +1097,7 @@
             {{ t(videoPricingI18nKey("title")) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingDescriptionKey(createForm.platform)) }}
           </p>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -1125,13 +1125,13 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
+          <div :class="createForm.platform === 'kling' ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-3 gap-3'">
+            <div v-if="createForm.platform !== 'kling'">
               <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_480p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_480p')"
@@ -1142,7 +1142,7 @@
               <input
                 v-model.number="createForm.video_price_720p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_720p')"
@@ -1153,7 +1153,7 @@
               <input
                 v-model.number="createForm.video_price_1080p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_1080p')"
@@ -1162,45 +1162,59 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="create-grok-video-model-prices"
+            :data-testid="createForm.platform === 'kling' ? 'create-kling-video-model-prices' : 'create-grok-video-model-prices'"
           >
             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+              {{ t(videoPricingOverridesKey(createForm.platform)) }}
+            </p>
+            <p class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              {{ t('admin.groups.videoPricing.entryExample') }}
             </p>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices, createForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+                :data-video-price-model="family.key"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
+                <div class="mb-3 min-w-0 border-b border-gray-200 pb-2 dark:border-dark-600">
+                  <h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ family.label.split(' · ')[0] }}</h5>
+                  <p class="mt-0.5 break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{ family.key }}</p>
                 </div>
-                <label
-                  v-for="resolution in grokVideoPriceResolutions"
-                  :key="resolution.key"
-                  class="block"
-                >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                    {{ resolution.label }} ($/s)
-                  </span>
-                  <input
-                    v-model.number="createForm.video_model_prices[family.key][resolution.key]"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    class="input"
-                    :data-testid="`create-grok-video-price-${family.key}-${resolution.key}`"
-                  />
-                </label>
+                <div class="grid grid-cols-1 items-start gap-3 min-[380px]:grid-cols-3">
+                  <label
+                    v-for="resolution in videoPriceResolutions(createForm.platform)"
+                    :key="resolution.key"
+                    class="flex min-w-0 flex-col"
+                  >
+                    <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ resolution.label }} · {{ t('admin.groups.videoPricing.pricePerSecondUnit') }}
+                    </span>
+                    <input
+                      v-model.number="createForm.video_model_prices[family.key][resolution.key]"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      :data-testid="`create-${createForm.platform}-video-price-${family.key}-${resolution.key}`"
+                      :disabled="!videoModelSupportsResolution(family.key, resolution.key, createForm.platform)"
+                      :aria-label="`${family.label} ${resolution.label} (USD/s)`"
+                      :placeholder="t(videoModelSupportsResolution(family.key, resolution.key, createForm.platform) ? 'admin.groups.videoPricing.inheritPrice' : 'admin.groups.videoPricing.unsupportedResolution')"
+                    />
+                    <span v-if="videoModelSupportsResolution(family.key, resolution.key, createForm.platform)" class="mt-1 min-h-4 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                      {{ videoModelPriceHint(createForm, family.key, resolution.key) }}
+                    </span>
+                    <span v-else class="mt-1 min-h-4 text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ t('admin.groups.videoPricing.unsupportedResolution') }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingModeHintKey(createForm.platform)) }}
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
@@ -2771,7 +2785,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(editForm.platform)"
           class="border-t pt-4"
@@ -2782,7 +2796,7 @@
             {{ t(videoPricingI18nKey("title")) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingDescriptionKey(editForm.platform)) }}
           </p>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -2810,13 +2824,13 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
+          <div :class="editForm.platform === 'kling' ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-3 gap-3'">
+            <div v-if="editForm.platform !== 'kling'">
               <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_480p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_480p')"
@@ -2827,7 +2841,7 @@
               <input
                 v-model.number="editForm.video_price_720p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_720p')"
@@ -2838,7 +2852,7 @@
               <input
                 v-model.number="editForm.video_price_1080p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_1080p')"
@@ -2847,45 +2861,59 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="edit-grok-video-model-prices"
+            :data-testid="editForm.platform === 'kling' ? 'edit-kling-video-model-prices' : 'edit-grok-video-model-prices'"
           >
             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+              {{ t(videoPricingOverridesKey(editForm.platform)) }}
+            </p>
+            <p class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              {{ t('admin.groups.videoPricing.entryExample') }}
             </p>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices, editForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+                :data-video-price-model="family.key"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
+                <div class="mb-3 min-w-0 border-b border-gray-200 pb-2 dark:border-dark-600">
+                  <h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ family.label.split(' · ')[0] }}</h5>
+                  <p class="mt-0.5 break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{ family.key }}</p>
                 </div>
-                <label
-                  v-for="resolution in grokVideoPriceResolutions"
-                  :key="resolution.key"
-                  class="block"
-                >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                    {{ resolution.label }} ($/s)
-                  </span>
-                  <input
-                    v-model.number="editForm.video_model_prices[family.key][resolution.key]"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    class="input"
-                    :data-testid="`edit-grok-video-price-${family.key}-${resolution.key}`"
-                  />
-                </label>
+                <div class="grid grid-cols-1 items-start gap-3 min-[380px]:grid-cols-3">
+                  <label
+                    v-for="resolution in videoPriceResolutions(editForm.platform)"
+                    :key="resolution.key"
+                    class="flex min-w-0 flex-col"
+                  >
+                    <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ resolution.label }} · {{ t('admin.groups.videoPricing.pricePerSecondUnit') }}
+                    </span>
+                    <input
+                      v-model.number="editForm.video_model_prices[family.key][resolution.key]"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      :data-testid="`edit-${editForm.platform}-video-price-${family.key}-${resolution.key}`"
+                      :disabled="!videoModelSupportsResolution(family.key, resolution.key, editForm.platform)"
+                      :aria-label="`${family.label} ${resolution.label} (USD/s)`"
+                      :placeholder="t(videoModelSupportsResolution(family.key, resolution.key, editForm.platform) ? 'admin.groups.videoPricing.inheritPrice' : 'admin.groups.videoPricing.unsupportedResolution')"
+                    />
+                    <span v-if="videoModelSupportsResolution(family.key, resolution.key, editForm.platform)" class="mt-1 min-h-4 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                      {{ videoModelPriceHint(editForm, family.key, resolution.key) }}
+                    </span>
+                    <span v-else class="mt-1 min-h-4 text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ t('admin.groups.videoPricing.unsupportedResolution') }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingModeHintKey(editForm.platform)) }}
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
@@ -4466,7 +4494,8 @@ import {
 } from "./groupsImagePricing";
 import {
   createVideoModelPricesForm,
-  grokVideoPriceResolutions,
+  videoPriceResolutions,
+  videoModelSupportsResolution,
   serializeVideoModelPrices,
   videoModelPriceFamilyRows,
 } from "./groupsVideoModelPricing";
@@ -5516,6 +5545,7 @@ type VideoPricingFormState = {
   video_price_480p: number | string | null;
   video_price_720p: number | string | null;
   video_price_1080p: number | string | null;
+  video_model_prices: ReturnType<typeof createVideoModelPricesForm>;
 };
 
 const imagePricingTiers = [
@@ -5590,7 +5620,7 @@ const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
   const multiplier = form.video_rate_independent
     ? normalizePreviewNumber(form.video_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
-  return videoPricingTiers.map((tier) => {
+  return videoPricingTiers.filter(tier => form.platform !== "kling" || tier.key !== "video_price_480p").map((tier) => {
     const basePrice =
       parsePreviewPrice(form[tier.key]) ??
       getDefaultVideoPreviewPrice(form.platform, tier.key);
@@ -5602,6 +5632,24 @@ const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
     };
   });
 };
+
+const videoPricingDescriptionKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingDescription' : 'description'}`;
+const videoPricingOverridesKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingOverridesDescription' : 'modelOverridesDescription'}`;
+const videoPricingModeHintKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingModeHint' : 'modeHint'}`;
+function videoModelFinalPricePreview(form: VideoPricingFormState, family: string, resolution: string) {
+  const flat = resolution === '720p' ? form.video_price_720p : resolution === '1080p' ? form.video_price_1080p : resolution === '480p' ? form.video_price_480p : null;
+  const price = parsePreviewPrice(form.video_model_prices[family]?.[resolution]) ?? parsePreviewPrice(flat);
+  const multiplier = form.video_rate_independent ? normalizePreviewNumber(form.video_rate_multiplier,1) : normalizePreviewNumber(form.rate_multiplier,1);
+  return price == null ? t('admin.groups.videoPricing.notConfigured') : formatVideoPricePreview(price * multiplier);
+}
+function videoModelPriceHint(form: VideoPricingFormState, family: string, resolution: string) {
+  const price = videoModelFinalPricePreview(form, family, resolution);
+  return price === t('admin.groups.videoPricing.notConfigured')
+    ? t('admin.groups.videoPricing.fallbackPriceHint')
+    : t('admin.groups.videoPricing.afterMultiplier', { price });
+}
+watch(() => createForm.platform, platform => { createForm.video_model_prices = createVideoModelPricesForm(createForm.video_model_prices,platform); });
+watch(() => editForm.platform, platform => { editForm.video_model_prices = createVideoModelPricesForm(editForm.video_model_prices,platform); });
 
 const createImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(createForm),
@@ -5918,7 +5966,7 @@ const closeCreateModal = () => {
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
-  createForm.video_model_prices = createVideoModelPricesForm();
+  createForm.video_model_prices = createVideoModelPricesForm(undefined, createForm.platform);
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
@@ -6221,7 +6269,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
   editForm.video_model_prices = createVideoModelPricesForm(
-    group.video_model_prices,
+    group.video_model_prices, group.platform,
   );
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.search_price_per_1k = group.search_price_per_1k ?? null;
@@ -6338,7 +6386,7 @@ const closeEditModal = () => {
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
-  editForm.video_model_prices = createVideoModelPricesForm();
+  editForm.video_model_prices = createVideoModelPricesForm(undefined, editForm.platform);
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;

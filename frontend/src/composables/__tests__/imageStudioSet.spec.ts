@@ -12,6 +12,15 @@ vi.mock('@/stores/app', () => ({
 
 type ImageEngine = typeof import('../useImageStudioEngine')
 
+describe('generated image media types', () => {
+  it.each(['GIF87a', 'GIF89a'])('preserves %s when decoding base64 output', async header => {
+    const images = await import('../useImageStudioEngine')
+    const blob = images.blobFromB64(btoa(header + '\u0000\u0001'))
+    expect(blob.type).toBe('image/gif')
+    expect(blob.size).toBe(8)
+  })
+})
+
 function response(text = 'generated image', ok = true): Response {
   return {
     ok,

@@ -3,6 +3,8 @@
  * 每源独立拉取,IndexedDB 缓存 7 天。与富贵SUP 同款数据源。
  */
 import { computed, ref } from 'vue'
+import { openCanvasDb } from './canvasStorage'
+import { sessionOwnerKey } from './studioSession'
 import { i18n } from '@/i18n'
 
 const t = i18n.global.t
@@ -53,24 +55,9 @@ export const filteredOnline = computed(() => {
 })
 
 // ===== IndexedDB 缓存(复用 canvas-db) =====
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('canvas-db', 3)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains('canvases')) db.createObjectStore('canvases', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('prompts')) db.createObjectStore('prompts', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('online-prompts')) db.createObjectStore('online-prompts', { keyPath: 'id' })
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-async function cacheGet(key: string): Promise<{ items: OnlinePrompt[]; at: number } | null> {
+async function cacheGet(key: string, owner: string): Promise<{ items: OnlinePrompt[]; at: number } | null> {
   try {
-    const db = await openDb()
+    const db = await openCanvasDb(owner)
     const rec = await new Promise<any>((resolve, reject) => {
       if (!db.objectStoreNames.contains('online-prompts')) { resolve(null); return }
       const tx = db.transaction('online-prompts', 'readonly')
@@ -83,9 +70,9 @@ async function cacheGet(key: string): Promise<{ items: OnlinePrompt[]; at: numbe
   } catch { return null }
 }
 
-async function cacheSet(key: string, items: OnlinePrompt[], at: number) {
+async function cacheSet(key: string, items: OnlinePrompt[], at: number, owner: string) {
   try {
-    const db = await openDb()
+    const db = await openCanvasDb(owner)
     await new Promise<void>((resolve, reject) => {
       if (!db.objectStoreNames.contains('online-prompts')) { resolve(); return }
       const tx = db.transaction('online-prompts', 'readwrite')
@@ -108,19 +95,25 @@ function allowedCover(u: unknown): string {
 }
 
 /** 加载一个源(带 7 天缓存);带 force 时强制刷新 */
+let epoch = 0
 export async function loadSource(id: string, force = false) {
+  const version = epoch, owner = sessionOwnerKey()
+  const current = () => version === epoch && owner === sessionOwnerKey()
   const src = sources.value.find(s => s.id === id)
-  if (!src || src.loading) return
+  if (!src) return
+  // Select before loading so the first request exposes its progress and errors.
+  // Pending responses may update their source, but must not change the selection.
+  activeSourceId.value = id
+  if (src.loading) return
   if (!force && src.items.length && Date.now() - src.loadedAt < CACHE_TTL) {
-    activeSourceId.value = id
     return
   }
   if (!force) {
-    const cached = await cacheGet(`online:${id}`)
+    const cached = await cacheGet(`online:${id}`, owner)
+    if (!current()) return
     if (cached && Date.now() - cached.at < CACHE_TTL && cached.items?.length) {
       src.items = cached.items
       src.loadedAt = cached.at
-      activeSourceId.value = id
       return
     }
   }
@@ -130,19 +123,29 @@ export async function loadSource(id: string, force = false) {
     const res = await fetch(`${BASE}/${src.file}`, { signal: AbortSignal.timeout(20000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json() as Array<Partial<OnlinePrompt>>
-    src.items = (data || [])
+    if (!current()) return
+    const items = (data || [])
       .filter(p => p && p.title && p.prompt)
       .map(p => ({ id: p.id || `${id}:${p.title}`, sourceId: id, title: p.title!, prompt: p.prompt!, coverUrl: allowedCover(p.coverUrl) }))
+    src.items = items
     src.loadedAt = Date.now()
-    activeSourceId.value = id
-    void cacheSet(`online:${id}`, src.items, src.loadedAt)
+    // IndexedDB cannot clone the reactive proxy exposed through src.items.
+    void cacheSet(`online:${id}`, items, src.loadedAt, owner)
   } catch (e) {
+    if (!current()) return
     src.error = e instanceof Error ? e.message : t('canvas.onlineLoadFailed')
   } finally {
-    src.loading = false
+    if (current()) src.loading = false
   }
 }
 
 export function rememberOnlinePrompt(p: OnlinePrompt): { name: string; category: string; content: string } {
   return { name: p.title.slice(0, 60), category: '在线收藏', content: p.prompt }
 }
+
+window.addEventListener('studio-session-ended', () => {
+  epoch++
+  sources.value = SOURCES.map(source => ({ ...source, items: [], loading: false, error: '', loadedAt: 0 }))
+  activeSourceId.value = ''
+  onlineSearch.value = ''
+})

@@ -1031,7 +1031,7 @@ func (s *AccountTestService) buildKlingUpstreamModelsRequest(ctx context.Context
 	accessKey, secretKey := account.GetKlingAccessSecret()
 	token, err := BuildKlingJWT(accessKey, secretKey, time.Now())
 	if err != nil {
-		return nil, newUpstreamModelSyncConfigError("Invalid Kling access key or secret key", err)
+		return nil, newUpstreamModelSyncConfigError("Kling requires Access Key|Secret Key (officialAccessKey|officialSecretKey for kling-multi); the internal API key cannot be used here", err)
 	}
 	baseURL, err := s.validateUpstreamBaseURL(account.GetKlingBaseURL())
 	if err != nil {

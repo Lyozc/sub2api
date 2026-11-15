@@ -100,6 +100,25 @@ function findModelRow(wrapper: ReturnType<typeof mountSelector>, modelId: string
 }
 
 describe('ModelWhitelistSelector', () => {
+  it.each(['internal-key', 'access| ', ' |secret'])('blocks malformed Kling credentials before model discovery: %s', async (api_key) => {
+    const wrapper = mountSelector({ platform: 'kling', syncCredentials: { platform: 'kling', type: 'apikey', api_key } })
+    await syncButton(wrapper).trigger('click')
+    expect(syncUpstreamModelsPreview).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.accounts.kling.invalidApiKey')
+    wrapper.unmount()
+  })
+
+  it('discovers Kling models with the official credential pair', async () => {
+    syncUpstreamModelsPreview.mockResolvedValue({ models: ['kling-v4'], discovery_source: 'upstream' })
+    const credentials = { platform: 'kling', type: 'apikey', api_key: 'access|secret', base_url: 'http://relay.test:8020' }
+    const wrapper = mountSelector({ platform: 'kling', syncCredentials: credentials })
+    await syncButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(syncUpstreamModelsPreview).toHaveBeenCalledWith(credentials)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['kling-v4']]])
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     copyToClipboard.mockClear()
     showError.mockReset()

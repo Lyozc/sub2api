@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -41,10 +42,12 @@ func (h *GatewayHandler) VideoStudioModels(c *gin.Context, apiKeyService *servic
 	}
 
 	type modelItem struct {
-		ID        string `json:"id"`
-		GroupID   int64  `json:"group_id"`
-		GroupName string `json:"group_name"`
-		Platform  string `json:"platform"`
+		ID           string                               `json:"id"`
+		GroupID      int64                                `json:"group_id"`
+		GroupName    string                               `json:"group_name"`
+		Platform     string                               `json:"platform"`
+		Capabilities map[string]service.VideoCapabilities `json:"capabilities,omitempty"`
+		UnitPrices   map[string]float64                   `json:"unit_prices,omitempty"`
 	}
 	out := make([]modelItem, 0)
 	seen := map[string]bool{}
@@ -56,11 +59,12 @@ func (h *GatewayHandler) VideoStudioModels(c *gin.Context, apiKeyService *servic
 		}
 		for _, id := range ids {
 			id = strings.TrimSpace(id)
-			if id == "" || seen[id] || !isVideoStudioModel(id, g.Platform) {
+			key := fmt.Sprintf("%d:%s", g.ID, id)
+			if id == "" || seen[key] || !isVideoStudioModel(id, g.Platform) {
 				continue
 			}
-			seen[id] = true
-			out = append(out, modelItem{ID: id, GroupID: g.ID, GroupName: g.Name, Platform: string(g.Platform)})
+			seen[key] = true
+			out = append(out, modelItem{ID: id, GroupID: g.ID, GroupName: g.Name, Platform: string(g.Platform), Capabilities: service.VideoStudioCapabilities(id), UnitPrices: service.VideoStudioUnitPrices(id, g)})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": out})

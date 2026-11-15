@@ -1320,6 +1320,11 @@ export default {
       bedrockApiKeyRequired: '请输入 Bedrock API Key',
       bedrockApiKeyLeaveEmpty: '留空以保持当前密钥',
       apiKeyIsRequired: 'API Key 是必需的',
+      kling: {
+        apiKeyHint: "按 Access Key{'|'}Secret Key 格式填写。kling-multi 使用 config.json 中的 officialAccessKey 和 officialSecretKey，以 {'|'} 连接；不是管理页面使用的普通 API Key。",
+        baseUrlHint: '填写 sub2api 服务器可访问的 Kling 反代根地址，例如 http://relay-host:8020；Docker 容器中的 127.0.0.1 指向容器自身。',
+        invalidApiKey: "请输入 Access Key{'|'}Secret Key；kling-multi 对应 officialAccessKey{'|'}officialSecretKey，不能只填普通 API Key。"
+      },
       leaveEmptyToKeep: '留空以保持当前密钥',
       // Upstream type
       upstream: {

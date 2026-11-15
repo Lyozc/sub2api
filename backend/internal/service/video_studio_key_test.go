@@ -70,7 +70,6 @@ func TestEnsureVideoStudioKeyForGroup_ReusesExisting(t *testing.T) {
 		Name:      VideoStudioKeyName,
 		Status:    StatusAPIKeyActive,
 		GroupID:   &groupID,
-		GroupIDs:  []int64{groupID},
 		Group:     &Group{ID: groupID, Name: "grok视频", Platform: PlatformGrok},
 		CreatedAt: time.Now().Add(-time.Hour),
 	}

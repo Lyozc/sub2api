@@ -107,13 +107,33 @@ func TestKlingStudioHandlerDispatchAndBilling(t *testing.T) {
 				require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 				require.Equal(t, "completed", gjson.GetBytes(w.Body.Bytes(), "status").String())
 			}
+			for _, content := range []bool{false, true} {
+				other, denied := newContext("")
+				// Use the same context key as real API-key authentication.
+				other.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 99, Concurrency: 5})
+				other.Params = gin.Params{{Key: "request_id", Value: id}}
+				if content {
+					h.KlingStudioContent(other)
+				} else {
+					h.KlingStudioStatus(other)
+				}
+				require.Equal(t, http.StatusNotFound, denied.Code)
+			}
+			// Composite lookups must resolve the provider from the owner's binding,
+			// including old text-to-video IDs that carry no Kling prefix.
+			composite, compositeResponse := newContext("")
+			compositeKey, _ := middleware.GetAPIKeyFromContext(composite)
+			compositeKey.Group.Platform = service.PlatformComposite
+			composite.Params = gin.Params{{Key: "request_id", Value: id}}
+			h.VideoStudioCompositeQuery(composite, false)
+			require.Equal(t, http.StatusOK, compositeResponse.Code, compositeResponse.Body.String())
 			require.Len(t, usage.logs, 1, "polls must not charge again")
 			reject = true
 			c, w = newContext(`{"model":"` + model + `","prompt":"cat"}`)
 			h.KlingStudioGeneration(c)
 			require.Equal(t, http.StatusPaymentRequired, w.Code, w.Body.String())
 			require.Len(t, usage.logs, 1, "rejected submissions must not charge")
-			require.Equal(t, 4, calls)
+			require.Equal(t, 5, calls)
 			slots.assertReleased(t)
 		})
 	}

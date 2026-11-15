@@ -93,6 +93,8 @@ func TestKlingUpstreamModelSync(t *testing.T) {
 			}
 			if tc.kind == service.UpstreamModelSyncErrorConfiguration {
 				require.Zero(t, calls)
+				require.ErrorContains(t, err, "Access Key|Secret Key")
+				require.ErrorContains(t, err, "officialAccessKey|officialSecretKey")
 			} else {
 				require.Equal(t, 1, calls, "Kling must not call the capability registry")
 			}

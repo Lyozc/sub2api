@@ -18,6 +18,8 @@
  *   - sessionGen[sid]:清空/删除某会话时递增,该会话旧轮次的 worker 不得再写库/改状态
  */
 import { computed, ref, toRaw } from 'vue'
+import { notifyStudioChange, onStudioChange } from './studioBroadcast'
+import { imageFileExtension } from './studioMedia'
 import { i18n } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 import { sessionOwnerKey, StudioSessionChangedError } from './studioSession'
@@ -165,6 +167,7 @@ export const format = ref<ChatFormat>('auto')
 export const gifFrames = ref(8)
 export const gifFrameMs = ref(200)
 export const model = ref<string>('')
+export const modelGroupId = ref<number | null>(null)
 export const polishEnabled = ref(false)
 export const polishing = ref(false)
 /** 每秒跳动的时钟(仅在有进行中的轮次时运行) */
@@ -257,7 +260,7 @@ function loadSettings(owner: string) {
   gifFrameMs.value = 200
   try {
     const raw = JSON.parse(localStorage.getItem(`${LS_SETTINGS}:${owner}`) || 'null') as Partial<{
-      ratio: string; resolution: ChatResolution; quality: ChatQuality; count: number; format: ChatFormat; model: string; polish: boolean
+      ratio: string; resolution: ChatResolution; quality: ChatQuality; count: number; format: ChatFormat; model: string; modelGroupId: number; polish: boolean
       gifFrames: number; gifFrameMs: number
     }> | null
     if (!raw) return
@@ -269,13 +272,14 @@ function loadSettings(owner: string) {
     if (raw.gifFrames !== undefined) gifFrames.value = clampGifFrames(raw.gifFrames)
     if (raw.gifFrameMs !== undefined) gifFrameMs.value = clampGifFrameMs(raw.gifFrameMs)
     if (raw.model) model.value = raw.model
+    modelGroupId.value = raw.modelGroupId ?? null
     polishEnabled.value = Boolean(raw.polish)
   } catch { /* 损坏的设置忽略 */ }
 }
 export function saveSettings() {
   count.value = clampCount(count.value)
   localStorage.setItem(`${LS_SETTINGS}:${sessionOwnerKey()}`, JSON.stringify({
-    ratio: ratio.value, resolution: resolution.value, quality: quality.value, count: clampCount(count.value), format: format.value, model: model.value, polish: polishEnabled.value,
+    ratio: ratio.value, resolution: resolution.value, quality: quality.value, count: clampCount(count.value), format: format.value, model: model.value, modelGroupId: modelGroupId.value, polish: polishEnabled.value,
     gifFrames: clampGifFrames(gifFrames.value), gifFrameMs: clampGifFrameMs(gifFrameMs.value)
   }))
 }
@@ -297,13 +301,17 @@ function saveActive() {
 }
 
 // ===== IndexedDB =====
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 function openDb(owner: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(`chat-draw-db-${owner}`, DB_VERSION)
     req.onupgradeneeded = (ev) => {
       const db = req.result
       const tx = req.transaction!
+      if (!db.objectStoreNames.contains('asset-deletions')) {
+        const deleted = db.createObjectStore('asset-deletions', { keyPath: 'id' })
+        deleted.createIndex('turnId', 'turnId')
+      }
       const turnsStore = db.objectStoreNames.contains('turns')
         ? tx.objectStore('turns')
         : db.createObjectStore('turns', { keyPath: 'id' })
@@ -345,7 +353,7 @@ function openDb(owner: string): Promise<IDBDatabase> {
     req.onblocked = () => reject(new Error('Chat draw database upgrade blocked'))
   })
 }
-type StoreName = 'turns' | 'sessions'
+type StoreName = 'turns' | 'sessions' | 'asset-deletions'
 async function dbTx<T = unknown>(
   owner: string,
   stores: StoreName[],
@@ -401,7 +409,7 @@ function dbDeleteSession(owner: string, sid: string, removeRecord: boolean) {
 // 写库串行化:每次写都各自开连接,不排队的话 delete 可能先于更早发起的 put 提交
 let writeChain: Promise<unknown> = Promise.resolve()
 function enqueueWrite(op: () => Promise<unknown>): Promise<unknown> {
-  const next = writeChain.then(op, op)
+  const next = writeChain.then(op, op).then(result => { chatAssetRevision.value++; return result })
   writeChain = next.catch(() => undefined)
   return next
 }
@@ -428,7 +436,38 @@ function persist(turn: ChatTurn, run: Run) {
   void enqueueWrite(async () => {
     // 排队期间会话可能被清空/删除、该轮被删除:执行时再校验一次,避免已删记录复活
     if (!isLive(run) || !turnStore.value[run.sid]?.some(x => x.id === id)) return
-    await dbTx(run.owner, ['turns'], 'readwrite', tx => tx.objectStore('turns').put(plain(turn)))
+    const saved = await dbTx<ChatTurn | undefined>(run.owner, ['turns', 'asset-deletions'], 'readwrite', tx => {
+      const store = tx.objectStore('turns'), current = store.get(turn.id)
+      const deleted = tx.objectStore('asset-deletions').index('turnId').getAll(turn.id)
+      let result: ChatTurn | undefined
+      deleted.onsuccess = () => {
+        const excluded = new Set<string>(deleted.result.map((item: { imageId: string }) => item.imageId))
+        if (excluded.has('*')) return
+        const incoming = plain(turn), previous = current.result as ChatTurn | undefined
+        const images = new Map((previous?.images || []).map(image => [image.id, image]))
+        for (const image of incoming.images) {
+          const old = images.get(image.id)
+          if (old?.status === 'done' && image.status !== 'done') continue
+          images.set(image.id, image)
+        }
+        result = { ...incoming, images: [...images.values()].filter(image => !excluded.has(image.id)) }
+        store.put(result)
+      }
+      return () => result
+    })
+    if (isLive(run)) {
+      const live = turnStore.value[run.sid]?.find(item => item.id === id)
+      if (live && !saved) {
+        turnStore.value[run.sid] = turnStore.value[run.sid].filter(item => item.id !== id)
+        releaseBlobs(blobsOf(live))
+      }
+      if (live && saved) {
+        const allowed = new Set(saved.images.map(image => image.id))
+        // Preserve active worker objects; only remove durable deletions.
+        live.images = live.images.filter(image => allowed.has(image.id) || image.status === 'pending')
+      }
+      notifyStudioChange('chat', run.owner)
+    }
   }).catch(() => { if (isCurrent(run)) reportSaveError() })
 }
 function persistSession(run: Run) {
@@ -436,7 +475,17 @@ function persistSession(run: Run) {
   void enqueueWrite(async () => {
     const s = findSession(run.sid)
     if (!isLive(run) || !s) return
-    await dbTx(run.owner, ['sessions'], 'readwrite', tx => tx.objectStore('sessions').put({ ...toRaw(s) }))
+    await dbTx<{ turnCount: number; imageCount: number }>(run.owner, ['turns', 'sessions'], 'readwrite', tx => {
+      const req = tx.objectStore('turns').index('session_ts').getAll(IDBKeyRange.bound([run.sid, -Infinity], [run.sid, Infinity]))
+      let result = { turnCount: 0, imageCount: 0 }
+      req.onsuccess = () => {
+        const records = req.result as ChatTurn[]
+        result = { turnCount: records.length, imageCount: records.reduce((sum, turn) => sum + turn.images.filter(image => image.status === 'done').length, 0) }
+        tx.objectStore('sessions').put({ ...toRaw(s), ...result })
+      }
+      return () => result
+    })
+    if (isLive(run)) notifyStudioChange('chat', run.owner)
   }).catch(() => { if (isCurrent(run)) reportSaveError() })
 }
 
@@ -618,6 +667,7 @@ export async function initChatDraw() {
   if (!models.value.some(o => o.id === model.value)) {
     model.value = models.value.some(o => o.id === studioModel.value) ? studioModel.value : (models.value[0]?.id || '')
   }
+  if (!models.value.some(o => o.id === model.value && o.group_id === modelGroupId.value)) modelGroupId.value = models.value.find(o => o.id === model.value)?.group_id ?? null
   // 会话与模型都就绪后才放行发送;仅 DB 读完不算完成(模型未加载时 model 可能为空)
   if (isCurrent(s)) sessionsLoaded.value = true
 }
@@ -1110,7 +1160,7 @@ function pushTurn(turn: ChatTurn, run: Run) {
 export async function sendDraft() {
   const text = draftText.value.trim()
   if (!text || busy.value) return
-  const option = models.value.find(o => o.id === model.value)
+  const option = models.value.find(o => o.id === model.value && (modelGroupId.value == null || o.group_id === modelGroupId.value))
   if (!option) {
     appStore().showError(initError.value || t('imageStudio.noImageModels'))
     return
@@ -1229,10 +1279,22 @@ export async function deleteTurn(id: string) {
   if (s) {
     s.turnCount = Math.max(0, s.turnCount - 1)
     s.imageCount = Math.max(0, s.imageCount - target.images.filter(i => i.status === 'done').length)
-    persistSession(run)
   }
-  await enqueueWrite(() => dbTx(run.owner, ['turns'], 'readwrite', tx => tx.objectStore('turns').delete(id)))
-    .catch(() => { if (isCurrent(run)) reportSaveError() })
+  await enqueueWrite(async () => {
+    await dbTx(run.owner, ['turns', 'sessions', 'asset-deletions'], 'readwrite', tx => {
+      tx.objectStore('asset-deletions').put({ id: `${id}:*`, turnId: id, imageId: '*' })
+      const turns = tx.objectStore('turns')
+      turns.delete(id)
+      const req = turns.index('session_ts').getAll(IDBKeyRange.bound([sid, -Infinity], [sid, Infinity]))
+      const session = tx.objectStore('sessions').get(sid)
+      session.onsuccess = () => {
+        if (!session.result) return
+        const records = req.result as ChatTurn[]
+        tx.objectStore('sessions').put({ ...session.result, turnCount: records.length, imageCount: records.reduce((n, turn) => n + turn.images.filter(image => image.status === 'done').length, 0) })
+      }
+    })
+    if (isCurrent(run)) notifyStudioChange('chat', run.owner)
+  }).catch(() => { if (isCurrent(run)) reportSaveError() })
 }
 
 /** 清空当前会话的轮次(会话本身保留,标题重置) */
@@ -1267,7 +1329,7 @@ export async function clearConversation() {
 
 export function downloadImage(turn: ChatTurn, img: ChatImage) {
   if (!img.blob) return
-  const ext = (img.blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+  const ext = imageFileExtension(img.blob)
   const a = document.createElement('a')
   a.href = blobUrl(img.blob)
   a.download = `chat-draw-${turn.ts}-${turn.images.indexOf(img) + 1}.${ext}`
@@ -1295,10 +1357,97 @@ export function resetChatDrawSession() {
   clearDraftRefs()
   revokeAllUrls()
   initOwner = ''
+  modelGroupId.value = null
   initPromise = null
   sessionsLoaded.value = false
 }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('studio-session-ended', resetChatDrawSession)
+}
+
+/** Asset views read all sessions without changing the currently selected chat. */
+export const chatAssetRevision = ref(0)
+export async function listChatAssetTurns(): Promise<ChatTurn[]> {
+  const session = currentSession()
+  await writeChain
+  const saved = await dbTx<ChatTurn[]>(session.owner, ['turns'], 'readonly', tx => tx.objectStore('turns').getAll())
+  if (!isCurrent(session)) return []
+  const merged = new Map(saved.map(turn => [turn.id, turn]))
+  for (const list of Object.values(turnStore.value)) for (const turn of list) {
+    if (!merged.has(turn.id) || controllers.has(turn.id)) merged.set(turn.id, turn)
+  }
+  return [...merged.values()]
+}
+export async function deleteChatAsset(turnId: string, imageId: string) {
+  const session = currentSession()
+  await enqueueWrite(async () => {
+    if (!isCurrent(session)) return
+    const result = await dbTx<{ turn?: ChatTurn; removed?: Blob; imageCount?: number }>(session.owner, ['turns', 'sessions', 'asset-deletions'], 'readwrite', tx => {
+      const turns = tx.objectStore('turns'), request = turns.get(turnId)
+      let result: { turn?: ChatTurn; removed?: Blob; imageCount?: number } = {}
+      request.onsuccess = () => {
+        const turn = request.result as ChatTurn | undefined
+        if (!turn) return
+        const image = turn.images.find(image => image.id === imageId && image.status === 'done')
+        if (!image) return
+        tx.objectStore('asset-deletions').put({ id: `${turnId}:${imageId}`, turnId, imageId })
+        turn.images = turn.images.filter(image => image.id !== imageId)
+        turns.put(turn)
+        result = { turn, removed: image.blob }
+        const savedSession = tx.objectStore('sessions').get(turn.sessionId)
+        savedSession.onsuccess = () => {
+          if (!savedSession.result) return
+          result.imageCount = Math.max(0, savedSession.result.imageCount - 1)
+          tx.objectStore('sessions').put({ ...savedSession.result, imageCount: result.imageCount })
+        }
+      }
+      return () => result
+    })
+    if (!isCurrent(session) || !result.turn) return
+    const live = turnStore.value[result.turn.sessionId]?.find(turn => turn.id === turnId)
+    if (live) live.images = live.images.filter(image => image.id !== imageId)
+    const record = findSession(result.turn.sessionId)
+    if (record && result.imageCount !== undefined) record.imageCount = result.imageCount
+    if (result.removed) releaseBlobs([result.removed])
+    notifyStudioChange('chat', session.owner)
+  })
+}
+
+// Refresh only records already loaded by this page. Active workers keep their
+// object identity, while deletion marks remove images even from stale workers.
+let refreshingAssets = false
+onStudioChange('chat', () => { void refreshExternalChatAssets() })
+async function refreshExternalChatAssets() {
+  if (refreshingAssets) return
+  const session = currentSession()
+  refreshingAssets = true
+  try {
+    await writeChain
+    const saved = await dbTx<ChatTurn[]>(session.owner, ['turns'], 'readonly', tx => tx.objectStore('turns').getAll())
+    const sessions = await dbAllSessions(session.owner)
+    const deleted = await dbTx<{ turnId: string; imageId: string }[]>(session.owner, ['asset-deletions'], 'readonly', tx => tx.objectStore('asset-deletions').getAll())
+    if (!isCurrent(session)) return
+    const byId = new Map(saved.map(turn => [turn.id, turn]))
+    const oldBlobs = Object.values(turnStore.value).flatMap(list => list.flatMap(blobsOf))
+    for (const [sid, list] of Object.entries(turnStore.value)) {
+      turnStore.value[sid] = list.flatMap(turn => {
+        const current = byId.get(turn.id)
+        if (controllers.has(turn.id)) {
+          const excluded = new Set(deleted.filter(item => item.turnId === turn.id).map(item => item.imageId))
+          if (excluded.has('*')) { controllers.get(turn.id)?.abort(); return [] }
+          turn.images = turn.images.filter(image => !excluded.has(image.id))
+          return [turn]
+        }
+        return current ? [current] : []
+      })
+    }
+    releaseBlobs(oldBlobs)
+    for (const saved of sessions) {
+      const local = findSession(saved.id)
+      if (local && !runningSessionIds.value.has(saved.id)) Object.assign(local, saved)
+    }
+    chatAssetRevision.value++
+  } catch { /* A later asset read can retry unavailable storage. */ }
+  finally { refreshingAssets = false }
 }

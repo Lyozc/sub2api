@@ -64,6 +64,26 @@ beforeEach(() => {
 afterEach(() => wrappers.splice(0).forEach(wrapper => wrapper.unmount()))
 
 describe('Kling upstream models in account editing', () => {
+  it('explains the official credentials and blocks a replacement dashboard key', async () => {
+    const wrapper = mountModal()
+    const keyInput = wrapper.get('input[placeholder="accessKey|secretKey"]')
+    expect(wrapper.text()).toContain('admin.accounts.kling.apiKeyHint')
+    await keyInput.setValue('dashboard-key')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(showError).toHaveBeenCalledWith('admin.accounts.kling.invalidApiKey')
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('saves a replacement official credential pair', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('input[placeholder="accessKey|secretKey"]').setValue(' access|secret ')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ credentials: expect.objectContaining({ api_key: 'access|secret' }) }))
+    expect(showError).not.toHaveBeenCalled()
+  })
+
   it('replaces old models and mappings, replaces static choices, and saves model_mapping', async () => {
     sync.mockResolvedValue({ models: ['kling-v4', ' kling-v4-flash ', 'kling-v4'] })
     const wrapper = mountModal()

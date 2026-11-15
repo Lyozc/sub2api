@@ -23,12 +23,17 @@ func TestBuildKlingStudioRequest(t *testing.T) {
 		name, body, duration, aspect string
 		endpoint                     KlingEndpoint
 	}{
+		{"custom seconds", `{"model":"kling-v4","prompt":"cat","duration":7}`, "7", "16:9", KlingEndpointText2Video},
+		{"custom string seconds", `{"model":"kling-v4","prompt":"cat","duration":"30"}`, "30", "16:9", KlingEndpointText2Video},
+		{"custom 4.0 seconds", `{"model":"kling-4.0","prompt":"cat","duration":23}`, "23", "16:9", KlingEndpointKling4Text},
+		{"ultrawide", `{"model":"kling-v4","prompt":"cat","aspect_ratio":"21:9"}`, "5", "21:9", KlingEndpointText2Video},
+		{"ultrawide 4.0", `{"model":"kling-4.0","prompt":"cat","aspect_ratio":"21:9"}`, "5", "21:9", KlingEndpointKling4Text},
 		{"defaults", `{"model":"kling-v3","prompt":"cat"}`, "5", "16:9", KlingEndpointText2Video},
 		{"ui parameters", `{"model":"kling-v2-6","prompt":"cat","duration":10,"aspect_ratio":"9:16","resolution":"720p"}`, "10", "9:16", KlingEndpointText2Video},
-		{"unsupported UI defaults", `{"model":"kling-v3","prompt":"cat","duration":6,"aspect_ratio":"7:4"}`, "5", "16:9", KlingEndpointText2Video},
-		{"image", `{"model":"kling-v3","prompt":"cat","image":{"url":"https://example.com/cat.png"}}`, "5", "16:9", KlingEndpointImage2Video},
+		{"unsupported aspect defaults", `{"model":"kling-v3","prompt":"cat","aspect_ratio":"7:4"}`, "5", "16:9", KlingEndpointText2Video},
+		{"image", `{"model":"kling-v3","prompt":"cat","image":{"url":"https://example.com/cat.png"}}`, "5", "", KlingEndpointImage2Video},
 		{"4.0", `{"model":"kling-4.0","prompt":"cat","duration":10,"aspect_ratio":"1:1"}`, "10", "1:1", KlingEndpointKling4Text},
-		{"4.0 image", `{"model":"kling-4.0","prompt":"cat","image":{"url":"https://example.com/cat.png"}}`, "5", "16:9", KlingEndpointKling4Image},
+		{"4.0 image", `{"model":"kling-4.0","prompt":"cat","image":{"url":"https://example.com/cat.png"}}`, "5", "", KlingEndpointKling4Image},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			endpoint, body, model, err := BuildKlingStudioRequest([]byte(tt.body))
@@ -47,7 +52,15 @@ func TestBuildKlingStudioRequest(t *testing.T) {
 			}
 			require.Equal(t, tt.duration, gjson.GetBytes(body, prefix+"duration").String())
 			require.Equal(t, tt.aspect, gjson.GetBytes(body, prefix+"aspect_ratio").String())
-			require.False(t, gjson.GetBytes(body, "resolution").Exists())
+			expectedResolution := gjson.Get(tt.body, "resolution").String()
+			if expectedResolution == "" {
+				generationMode := "t2v"
+				if endpoint == KlingEndpointImage2Video || endpoint == KlingEndpointKling4Image {
+					generationMode = "i2v"
+				}
+				expectedResolution = VideoStudioCapabilities(model)[generationMode].DefaultResolution
+			}
+			require.Equal(t, expectedResolution, gjson.GetBytes(body, prefix+"resolution").String())
 			if endpoint == KlingEndpointKling4Image {
 				require.Equal(t, "first_frame", gjson.GetBytes(body, "contents.0.type").String())
 				require.Equal(t, "https://example.com/cat.png", gjson.GetBytes(body, "contents.0.url").String())
@@ -57,6 +70,34 @@ func TestBuildKlingStudioRequest(t *testing.T) {
 	for _, body := range []string{`[]`, `{`, `{"model":"kolors","prompt":"x"}`, `{"model":"kling-image","prompt":"x"}`, `{"model":"kling-v3"}`} {
 		_, _, _, err := BuildKlingStudioRequest([]byte(body))
 		require.Error(t, err, body)
+	}
+}
+
+func TestBuildKlingStudioRequestParameters(t *testing.T) {
+	_, body, _, err := BuildKlingStudioRequest([]byte(`{"model":"kling-v2-6","prompt":"cat","duration":10,"mode":"pro","sound":"on","negative_prompt":"blur","cfg_scale":0,"resolution":"1080p"}`))
+	require.NoError(t, err)
+	require.Equal(t, "pro", gjson.GetBytes(body, "mode").String())
+	require.Equal(t, "on", gjson.GetBytes(body, "sound").String())
+	require.Equal(t, "blur", gjson.GetBytes(body, "negative_prompt").String())
+	require.True(t, gjson.GetBytes(body, "cfg_scale").Exists())
+	require.Equal(t, float64(0), gjson.GetBytes(body, "cfg_scale").Float())
+	require.Equal(t, "1080p", gjson.GetBytes(body, "resolution").String())
+	for _, model := range []string{"kling-v4", "kling-4.0"} {
+		_, body, _, err := BuildKlingStudioRequest([]byte(`{"model":"` + model + `","prompt":"cat","duration":5,"resolution":"4k"}`))
+		require.NoError(t, err)
+		path := "resolution"
+		if model == "kling-4.0" {
+			path = "settings.resolution"
+		}
+		require.Equal(t, "4k", gjson.GetBytes(body, path).String())
+	}
+	for _, fields := range []string{`"duration":0`, `"duration":true`, `"duration":[]`, `"duration":"1e1"`, `"duration":9007199254740992`, `"duration":null`, `"duration":-5`, `"duration":5.5`, `"mode":"ultra"`, `"sound":true`, `"resolution":"480p"`, `"cfg_scale":-0.1`, `"cfg_scale":1.1`, `"cfg_scale":"0.5"`, `"negative_prompt":23`} {
+		_, _, _, err := BuildKlingStudioRequest([]byte(`{"model":"kling-v3","prompt":"cat",` + fields + `}`))
+		require.Error(t, err, fields)
+	}
+	for _, field := range []string{`"mode":"pro"`, `"sound":"on"`, `"cfg_scale":0.5`, `"negative_prompt":"blur"`} {
+		_, _, _, err := BuildKlingStudioRequest([]byte(`{"model":"kling-4.0","prompt":"cat",` + field + `}`))
+		require.Error(t, err, field)
 	}
 }
 

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -71,15 +72,24 @@ func RegisterImageStudioRoutes(
 		if err != nil {
 			return nil, err
 		}
+		if len(groups) == 0 {
+			return nil, fmt.Errorf("no available image group")
+		}
 		chosen := groups[0]
 		if idStr := strings.TrimSpace(c.GetHeader("X-Image-Studio-Group")); idStr != "" {
-			if gid, parseErr := strconv.ParseInt(idStr, 10, 64); parseErr == nil {
+			gid, parseErr := strconv.ParseInt(idStr, 10, 64)
+			found := false
+			if parseErr == nil {
 				for _, g := range groups {
 					if g.ID == gid {
 						chosen = g
+						found = true
 						break
 					}
 				}
+			}
+			if !found {
+				return nil, fmt.Errorf("requested image group is unavailable")
 			}
 		}
 		return apiKeyService.EnsureImageStudioKeyForGroup(c.Request.Context(), userID, chosen.ID)

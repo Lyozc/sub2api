@@ -5,6 +5,8 @@
  *   - prompts: { id, name, category, content, builtin?, updatedAt }  提示词库
  */
 import { ref } from 'vue'
+import { openCanvasDb } from './canvasStorage'
+import { sessionOwnerKey, StudioSessionChangedError } from './studioSession'
 import { i18n } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 
@@ -21,7 +23,7 @@ export interface PromptItem {
 }
 
 // ===== 状态 =====
-export const activeTab = ref<'canvas' | 'image' | 'chat' | 'video' | 'prompts' | 'assets' | 'config'>('canvas')
+export const activeTab = ref<'conversation' | 'chat' | 'video' | 'prompts' | 'assets' | 'config'>('chat')
 
 export const prompts = ref<PromptItem[]>([])
 
@@ -34,27 +36,19 @@ export function uid(): string {
 }
 
 // ===== IndexedDB =====
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('canvas-db', 3)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains('canvases')) db.createObjectStore('canvases', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('prompts')) db.createObjectStore('prompts', { keyPath: 'id' })
-      if (!db.objectStoreNames.contains('online-prompts')) db.createObjectStore('online-prompts', { keyPath: 'id' })
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
+let epoch = 0
 function tx<T>(store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return openDb().then(db => new Promise<T>((resolve, reject) => {
-    const t2 = db.transaction(store, mode)
-    const req = run(t2.objectStore(store))
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-    t2.oncomplete = () => db.close()
+  const owner = sessionOwnerKey(), version = epoch
+  return openCanvasDb(owner).then(db => new Promise<T>((resolve, reject) => {
+    if (owner !== sessionOwnerKey() || version !== epoch) { db.close(); reject(new StudioSessionChangedError()); return }
+    const transaction = db.transaction(store, mode)
+    const req = run(transaction.objectStore(store))
+    const abort = () => transaction.abort()
+    window.addEventListener('studio-session-ended', abort)
+    const cleanup = () => { db.close(); window.removeEventListener('studio-session-ended', abort) }
+    transaction.oncomplete = () => { cleanup(); resolve(req.result) }
+    transaction.onabort = () => { cleanup(); reject(transaction.error || new StudioSessionChangedError()) }
+    transaction.onerror = () => { /* onabort settles the operation */ }
   }))
 }
 
@@ -73,10 +67,13 @@ const BUILTIN_PROMPTS: PromptItem[] = [
 ]
 
 export async function loadPrompts() {
+  const version = epoch, owner = sessionOwnerKey()
   try {
     const items = await tx<PromptItem[]>('prompts', 'readonly', s => s.getAll() as IDBRequest<PromptItem[]>)
+    if (version !== epoch || owner !== sessionOwnerKey()) return
     prompts.value = [...BUILTIN_PROMPTS, ...items].sort((a, b) => b.updatedAt - a.updatedAt)
   } catch {
+    if (version !== epoch || owner !== sessionOwnerKey()) return
     prompts.value = [...BUILTIN_PROMPTS]
   }
 }
@@ -96,4 +93,50 @@ export async function updatePrompt(item: PromptItem) {
 export async function deletePrompt(id: string) {
   await tx('prompts', 'readwrite', s => s.delete(id))
   await loadPrompts()
+}
+
+window.addEventListener('studio-session-ended', () => { epoch++; prompts.value = [] })
+
+// Unowned legacy data remains untouched until the person using the device
+// explicitly claims it for their current account. Never auto-import on login.
+export async function recoverLegacyPrompts() {
+  const owner = sessionOwnerKey(), version = epoch
+  const legacy = await new Promise<IDBDatabase | null>((resolve, reject) => {
+    let missing = false
+    const req = indexedDB.open('canvas-db')
+    req.onupgradeneeded = () => { missing = true; req.transaction?.abort() }
+    req.onerror = () => missing ? resolve(null) : reject(req.error)
+    req.onsuccess = () => resolve(req.result)
+  })
+  if (!legacy) return 0
+  let records: PromptItem[]
+  try {
+    if (!legacy.objectStoreNames.contains('prompts')) return 0
+    records = await new Promise((resolve, reject) => {
+      const req = legacy.transaction('prompts').objectStore('prompts').getAll()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+  } finally { legacy.close() }
+  const db = await openCanvasDb(owner)
+  try {
+    if (version !== epoch || owner !== sessionOwnerKey()) throw new StudioSessionChangedError()
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('prompts', 'readwrite')
+      const abort = () => transaction.abort()
+      window.addEventListener('studio-session-ended', abort)
+      const cleanup = () => window.removeEventListener('studio-session-ended', abort)
+      for (const item of records) {
+        if (!item || typeof item.id !== 'string' || typeof item.content !== 'string' || typeof item.name !== 'string') continue
+        const key = `legacy:${item.id}`
+        const store = transaction.objectStore('prompts'), req = store.get(key)
+        req.onsuccess = () => { if (!req.result) store.put({ ...item, id: key }) }
+      }
+      transaction.oncomplete = () => { cleanup(); resolve() }
+      transaction.onabort = () => { cleanup(); reject(transaction.error || new StudioSessionChangedError()) }
+    })
+  } finally { db.close() }
+  if (version !== epoch || owner !== sessionOwnerKey()) return 0
+  await loadPrompts()
+  return records.length
 }

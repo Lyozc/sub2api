@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -296,19 +297,36 @@ func KlingRequestModel(body []byte) string {
 	return model
 }
 
-// KlingRequestDurationSeconds returns the requested video duration in seconds.
-// The compatibility layer currently accepts the official 5/10 second values.
+// positiveKlingDuration validates seconds without coercing booleans or fractions.
+func positiveKlingDuration(value gjson.Result) (int, bool) {
+	if value.Type != gjson.String && value.Type != gjson.Number {
+		return 0, false
+	}
+	text := value.String()
+	if value.Type == gjson.Number {
+		text = strconv.FormatFloat(value.Float(), 'f', -1, 64)
+	}
+	if text == "" {
+		return 0, false
+	}
+	for _, digit := range text {
+		if digit < '0' || digit > '9' {
+			return 0, false
+		}
+	}
+	seconds, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || seconds <= 0 || seconds > 9007199254740991 {
+		return 0, false
+	}
+	return int(seconds), true
+}
+
+// KlingRequestDurationSeconds preserves requested seconds for forwarding and billing.
+// Model-specific duration limits are validated by the upstream model declaration.
 func KlingRequestDurationSeconds(body []byte) int {
 	for _, path := range []string{"duration", "settings.duration"} {
-		value := strings.TrimSpace(gjson.GetBytes(body, path).String())
-		if value == "" {
-			continue
-		}
-		if value == "10" {
-			return 10
-		}
-		if value == "5" {
-			return 5
+		if seconds, ok := positiveKlingDuration(gjson.GetBytes(body, path)); ok {
+			return seconds
 		}
 	}
 	return 5

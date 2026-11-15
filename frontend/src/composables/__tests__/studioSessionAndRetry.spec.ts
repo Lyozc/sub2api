@@ -19,6 +19,7 @@ function switchAccount(id: number) {
   window.dispatchEvent(new StorageEvent('storage', { key: 'auth_user', oldValue, newValue }))
 }
 
+vi.mock('../videoFirstFrame', () => ({ prepareVideoFirstFrame: vi.fn(async (file: File) => file), VideoFrameError: class extends Error {} }))
 vi.mock('@/i18n', () => ({ i18n: { global: { t: (key: string) => key } } }))
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() })
@@ -126,8 +127,8 @@ describe('studio session and task isolation', () => {
         : response({ status, error: 'upstream terminal failure' }))
     vi.stubGlobal('fetch', fetcher)
     const video = await import('../useVideoStudioEngine')
-    video.models.value = [{ id: 'original-video', group_id: 20, group_name: 'video' }]
-    video.model.value = 'original-video'
+    video.models.value = [{ id: 'grok-imagine-video-1.5', group_id: 20, group_name: 'video' }]
+    video.model.value = 'grok-imagine-video-1.5'
     video.prompt.value = 'original prompt'
     video.videoSize.value = '720x1280'
     video.mode.value = 'i2v'
@@ -155,7 +156,7 @@ describe('studio session and task isolation', () => {
     expect(posts).toHaveLength(2)
     expect(posts[1][1]?.body).toBe(posts[0][1]?.body)
     expect(JSON.parse(String(posts[1][1]?.body))).toMatchObject({
-      model: 'original-video', prompt: 'original prompt', aspect_ratio: '9:16', duration: 6,
+      model: 'grok-imagine-video-1.5', prompt: 'original prompt', aspect_ratio: '9:16', duration: 6,
       image: { url: 'data:image/png;base64,aW1hZ2U=' }
     })
     expect(posts[1][1]?.headers).toMatchObject({ 'X-Video-Studio-Group': '20' })
@@ -172,12 +173,12 @@ describe('studio session and task isolation', () => {
     const video = await import('../useVideoStudioEngine')
     video.prompt.value = 'test'
     video.submitBatch()
-    await vi.advanceTimersByTimeAsync(15000)
+    await vi.advanceTimersByTimeAsync(35000)
     const task = video.tasks.value[0]
     expect(task.status).toBe('failed')
 
     video.retryTask(task.taskId)
-    await vi.advanceTimersByTimeAsync(10000)
+    await vi.advanceTimersByTimeAsync(30000)
     expect(task.status).toBe('failed')
     expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
     expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/tasks/original-job'))).toHaveLength(6)
@@ -213,14 +214,14 @@ describe('studio session and task isolation', () => {
     video.model.value = 'new-model'
     video.tasks.value = [{
       taskId: 1, remoteId: '', status: 'failed', prompt: 'test',
-      model: 'old-model', seconds: 6, resolution: '480p', submittedAt: 1, groupId: 10
+      model: 'grok-imagine-video', seconds: 6, resolution: '480p', submittedAt: 1, groupId: 10
     }]
 
     video.retryTask(1)
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalled())
 
     const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body))
-    expect(body.model).toBe('old-model')
+    expect(body.model).toBe('grok-imagine-video')
     expect(fetcher.mock.calls[0][1]?.headers['X-Video-Studio-Group']).toBe('10')
   })
 
@@ -464,4 +465,25 @@ describe('studio session and task isolation', () => {
 
     expect(video.models.value.map(item => item.id)).toEqual(['grok-imagine-video-1.5'])
   })
+
+  it('checks the saved acknowledgement after a lost response instead of posting again', async () => {
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') throw new Error('response lost')
+      if (url.includes('/submissions/')) return response({ id: 'accepted-job' })
+      return response({ status: 'failed', error: 'mock terminal status' })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const video = await import('../useVideoStudioEngine')
+    video.prompt.value = 'one paid request'
+    video.submitBatch()
+    await vi.waitFor(() => expect(video.generating.value).toBe(false))
+    const task = video.tasks.value[0]
+    expect(task.submissionUnconfirmed).toBe(true)
+    const key = task.submissionKey
+    video.retryTask(task.taskId)
+    await vi.waitFor(() => expect(task.remoteId).toBe('accepted-job'))
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    expect(fetcher.mock.calls.some(([url]) => url.endsWith(`/submissions/${key}`))).toBe(true)
+  })
+
 })

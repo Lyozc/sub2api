@@ -1,3 +1,12 @@
+/** Use the returned media type when naming downloads, including SVG and GIF. */
+export function imageFileExtension(blob: Blob): string {
+  const extensions: Record<string, string> = {
+    'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
+    'image/gif': 'gif', 'image/svg+xml': 'svg'
+  }
+  return extensions[blob.type.toLowerCase().split(';')[0]] || 'png'
+}
+
 /** Read the source itself: requested generation seconds may differ from the returned video. */
 export function readVideoDuration(url: string, signal: AbortSignal): Promise<number> {
   if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))

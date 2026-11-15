@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,6 +60,10 @@ func RegisterVideoStudioRoutes(
 		})
 	}
 	videoStatusTarget := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformComposite {
+			h.OpenAIGateway.VideoStudioCompositeQuery(c, false)
+			return
+		}
 		if getGroupPlatform(c) == service.PlatformKling {
 			h.OpenAIGateway.KlingStudioStatus(c)
 			return
@@ -75,6 +80,10 @@ func RegisterVideoStudioRoutes(
 		})
 	}
 	videoContentTarget := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformComposite {
+			h.OpenAIGateway.VideoStudioCompositeQuery(c, true)
+			return
+		}
 		if getGroupPlatform(c) == service.PlatformKling {
 			h.OpenAIGateway.KlingStudioContent(c)
 			return
@@ -99,15 +108,24 @@ func RegisterVideoStudioRoutes(
 		if err != nil {
 			return nil, err
 		}
+		if len(groups) == 0 {
+			return nil, fmt.Errorf("no available video group")
+		}
 		chosen := groups[0]
 		if idStr := strings.TrimSpace(c.GetHeader("X-Video-Studio-Group")); idStr != "" {
-			if gid, parseErr := strconv.ParseInt(idStr, 10, 64); parseErr == nil {
+			gid, parseErr := strconv.ParseInt(idStr, 10, 64)
+			found := false
+			if parseErr == nil {
 				for _, g := range groups {
 					if g.ID == gid {
 						chosen = g
+						found = true
 						break
 					}
 				}
+			}
+			if !found {
+				return nil, fmt.Errorf("requested video group is unavailable")
 			}
 		}
 		return apiKeyService.EnsureVideoStudioKeyForGroup(c.Request.Context(), userID, chosen.ID)
@@ -153,7 +171,8 @@ func RegisterVideoStudioRoutes(
 		studio.GET("/models", relay("/v1/models", "", func(c *gin.Context) {
 			h.Gateway.VideoStudioModels(c, apiKeyService)
 		})...)
-		studio.POST("/generations", relay(handler.EndpointVideos, "", videoTarget)...)
+		studio.POST("/generations", relay(handler.EndpointVideos, "", func(c *gin.Context) { handler.VideoStudioGenerationOnce(c, videoTarget) })...)
+		studio.GET("/submissions/:submission_id", handler.VideoStudioSubmission)
 		studio.GET("/tasks/:request_id", relay("/v1/videos", "", videoStatusTarget)...)
 		studio.GET("/tasks/:request_id/content", relay("/v1/videos", "/content", videoContentTarget)...)
 	}

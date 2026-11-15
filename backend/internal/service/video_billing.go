@@ -52,6 +52,31 @@ func CanonicalGrokImagineVideoPriceFamily(model string) string {
 	}
 }
 
+// CanonicalVideoPriceFamily also folds Kling's official aliases and CLI IDs.
+// Keep pro billing distinct from standard mode and retain unknown custom models.
+func CanonicalVideoPriceFamily(model string) string {
+	if family := CanonicalGrokImagineVideoPriceFamily(model); family != "" {
+		return family
+	}
+	raw := strings.ToLower(strings.TrimSpace(model))
+	suffix := ""
+	base := raw
+	if strings.HasSuffix(base, "-pro") {
+		base = strings.TrimSuffix(base, "-pro")
+		suffix = "-pro"
+	}
+	aliases := map[string]string{
+		"kling-video-v4-0": "kling-v4", "kling-video-v4-0-flash": "kling-v4-flash",
+		"kling-video-v3-0": "kling-v3", "kling-video-v3-0-omni": "kling-v3-omni",
+		"kling-video-v2-6": "kling-v2-6", "kling-video-v2-5": "kling-v2-5-turbo",
+		"kling-video-o1": "kling-o1",
+	}
+	if family, ok := aliases[VideoCapabilityModelID(base)]; ok {
+		return family + suffix
+	}
+	return raw
+}
+
 // NormalizeVideoModelPrices cleans and canonicalizes a per-model resolution map.
 // Keys become price families; tiers use 480p/720p/1080p. Negative prices dropped.
 //
@@ -75,7 +100,7 @@ func NormalizeVideoModelPrices(in map[string]map[string]float64) map[string]map[
 		if len(tierPrices) == 0 {
 			continue
 		}
-		family := CanonicalGrokImagineVideoPriceFamily(modelKey)
+		family := CanonicalVideoPriceFamily(modelKey)
 		if family == "" {
 			key := strings.ToLower(strings.TrimSpace(modelKey))
 			switch key {
@@ -135,7 +160,7 @@ func LookupVideoModelPrice(prices map[string]map[string]float64, model, resoluti
 	if len(prices) == 0 {
 		return nil
 	}
-	family := CanonicalGrokImagineVideoPriceFamily(model)
+	family := CanonicalVideoPriceFamily(model)
 	if family == "" {
 		family = strings.ToLower(strings.TrimSpace(model))
 	}
@@ -143,6 +168,9 @@ func LookupVideoModelPrice(prices map[string]map[string]float64, model, resoluti
 		return nil
 	}
 	tierPrices, ok := prices[family]
+	if !ok && strings.HasPrefix(family, "kling-") {
+		tierPrices, ok = NormalizeVideoModelPrices(prices)[family]
+	}
 	if !ok || len(tierPrices) == 0 {
 		return nil
 	}

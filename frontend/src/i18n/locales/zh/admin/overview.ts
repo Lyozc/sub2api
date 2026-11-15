@@ -1096,6 +1096,15 @@ export default {
         notConfigured: '未配置'
       },
       videoPricing: {
+        fallbackPriceHint: "沿用通用价或已有定价",
+        pricePerSecondUnit: "美元/秒",
+        entryExample: "每张卡片只设置标题中的模型。输入的是每秒美元单价，例如填 0.10，计费时长 10 秒、倍率 1 时共 $1.00。填 0 = 免费；留空 = 沿用通用价或已有定价。",
+        afterMultiplier: "倍率后：{price} / 秒",
+        unsupportedResolution: "不支持",
+        inheritPrice: "留空沿用已有价",
+        klingDescription: "配置 Kling 视频每秒单价（USD/秒）。可先设置通用 720p、1080p 单价，再按型号单独覆盖；4K 在下方支持的型号中配置。留空不代表免费，沿用现有计费回退。",
+        klingOverridesDescription: "在对应模型卡片内，按 720p、1080p、4K 分别填写每秒单价。灰色“不支持”的档位无需填写。同型号别名共用价格；若下方“分组逐模型定价”有匹配项，该项仍优先。",
+        klingModeHint: "费用 = 每秒价格 × 计费时长 × 有效倍率。计费时长包含生成视频时长及服务端核验的参考视频时长；默认使用分组倍率，开启独立倍率后使用视频独立倍率。",
         title: '视频生成计费',
         description:
           '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',

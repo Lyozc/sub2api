@@ -1,3 +1,5 @@
+import { videoCapabilities } from '@/composables/videoModelCapabilities'
+
 export const grokVideoPriceResolutions = [
   { key: '480p', label: '480p' },
   { key: '720p', label: '720p' },
@@ -9,11 +11,40 @@ export const grokVideoPriceFamilies = [
   { key: 'grok-imagine-video-1.5', label: 'grok-imagine-video-1.5' }
 ] as const
 
+export const klingVideoPriceFamilies = [
+  { key: 'kling-v4', label: 'Kling 4.0 · kling-v4' },
+  { key: 'kling-v4-flash', label: 'Kling 4.0 Flash · kling-v4-flash' },
+  { key: 'kling-v3', label: 'Kling 3.0 · kling-v3' },
+  { key: 'kling-v3-omni', label: 'Kling 3.0 Omni · kling-v3-omni' },
+  { key: 'kling-o1', label: 'Kling O1 · kling-o1' },
+  { key: 'kling-v2-6', label: 'Kling 2.6 · kling-v2-6' },
+] as const
+
+export function videoPriceResolutions(platform = 'grok') {
+  return platform === 'kling'
+    ? [{ key: '720p', label: '720p' }, { key: '1080p', label: '1080p' }, { key: '4k', label: '4K' }]
+    : [...grokVideoPriceResolutions]
+}
+
+export function videoModelSupportsResolution(model: string, resolution: string, platform = 'grok') {
+  // Keep pre-existing custom models editable. Only disable verified unsupported tiers.
+  const known = klingVideoPriceFamilies.some(family => family.key === model)
+  return platform !== 'kling' || !known || videoCapabilities(model).resolutions.includes(resolution)
+}
+
+function knownFamilies(platform: string) { return platform === 'kling' ? klingVideoPriceFamilies : grokVideoPriceFamilies }
+
 export type VideoModelPrices = Record<string, Record<string, number>>
 export type VideoModelPricesForm = Record<string, Record<string, number | string | null>>
 
 function normalizeFamily(value: string): string {
-  return value.trim().toLowerCase()
+  const raw = value.trim().toLowerCase()
+  if (!raw.startsWith('kling-')) return raw
+  const pro = raw.endsWith('-pro') ? '-pro' : ''
+  let id = pro ? raw.slice(0,-4) : raw
+  id = id.replace(/_/g,'-').replace(/^kling-(?:video-)?v?/, '').replace(/\./g,'-')
+  const aliases: Record<string,string> = { '4':'kling-v4','4-0':'kling-v4','4-flash':'kling-v4-flash','4-0-flash':'kling-v4-flash','3':'kling-v3','3-0':'kling-v3','3-omni':'kling-v3-omni','3-0-omni':'kling-v3-omni','2-6':'kling-v2-6','2-5':'kling-v2-5-turbo','2-5-turbo':'kling-v2-5-turbo','o1':'kling-o1' }
+  return aliases[id] ? aliases[id]+pro : raw
 }
 
 function normalizePrice(value: unknown): number | null {
@@ -22,29 +53,29 @@ function normalizePrice(value: unknown): number | null {
   return Number.isFinite(price) && price >= 0 ? price : null
 }
 
-function emptyTiers(): Record<string, number | string | null> {
-  return Object.fromEntries(grokVideoPriceResolutions.map(({ key }) => [key, null]))
+function emptyTiers(platform = 'grok'): Record<string, number | string | null> {
+  return Object.fromEntries(videoPriceResolutions(platform).map(({ key }) => [key, null]))
 }
 
 // Keep unknown families from an existing group so a future backend catalog is
 // not silently discarded when an operator edits another group setting.
 export function createVideoModelPricesForm(
-  prices?: VideoModelPrices | null
+  prices?: VideoModelPrices | VideoModelPricesForm | null, platform = 'grok'
 ): VideoModelPricesForm {
   const form: VideoModelPricesForm = {}
 
   for (const [rawFamily, rawTiers] of Object.entries(prices ?? {})) {
     const family = normalizeFamily(rawFamily)
     if (!family || !rawTiers || typeof rawTiers !== 'object') continue
-    form[family] = emptyTiers()
+    form[family] ??= emptyTiers(platform)
     for (const [rawResolution, rawPrice] of Object.entries(rawTiers)) {
       const price = normalizePrice(rawPrice)
       if (price !== null) form[family][rawResolution.trim().toLowerCase()] = price
     }
   }
 
-  for (const { key } of grokVideoPriceFamilies) {
-    form[key] ??= emptyTiers()
+  for (const { key } of knownFamilies(platform)) {
+    form[key] ??= emptyTiers(platform)
   }
   return form
 }
@@ -66,12 +97,12 @@ export function serializeVideoModelPrices(form: VideoModelPricesForm): VideoMode
   return result
 }
 
-export function videoModelPriceFamilyRows(form: VideoModelPricesForm) {
-  const known = new Set<string>(grokVideoPriceFamilies.map(({ key }) => key))
+export function videoModelPriceFamilyRows(form: VideoModelPricesForm, platform = 'grok') {
+  const known = new Set<string>(knownFamilies(platform).map(({ key }) => key))
   const extra = Object.keys(form)
     .map(normalizeFamily)
-    .filter((family) => family && !known.has(family))
+    .filter((family) => family && !known.has(family) && Object.values(form[family] || {}).some(value => normalizePrice(value) !== null))
     .sort()
     .map((key) => ({ key, label: key }))
-  return [...grokVideoPriceFamilies, ...extra]
+  return [...knownFamilies(platform), ...extra]
 }

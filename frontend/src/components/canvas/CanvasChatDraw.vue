@@ -3,7 +3,7 @@
     <!-- 左侧历史栏(桌面,可折叠) -->
     <aside
       v-if="!collapsed"
-      class="hidden w-[15.5rem] shrink-0 flex-col overflow-hidden rounded-[1.25rem] border border-gray-200 bg-white/90 p-3 shadow-[0_16px_44px_-36px_rgba(15,23,42,0.45)] dark:border-dark-700 dark:bg-dark-900/80 lg:flex"
+      class="studio-panel hidden w-[15.5rem] shrink-0 flex-col overflow-hidden p-3 lg:flex"
       :aria-label="t('canvasChat.history')"
     >
       <ChatDrawHistory
@@ -19,8 +19,8 @@
     <!-- 移动端历史抽屉 -->
     <Teleport to="body">
       <Transition enter-from-class="opacity-0" leave-to-class="opacity-0" enter-active-class="transition-opacity duration-200" leave-active-class="transition-opacity duration-150">
-        <div v-if="drawerOpen" class="fixed inset-0 z-[260] bg-slate-900/40 p-3 lg:hidden" @click.self="drawerOpen = false">
-          <div class="flex h-full max-h-[calc(100dvh-1.5rem)] w-[min(22rem,88vw)] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-dark-700 dark:bg-dark-900" role="dialog" aria-modal="true" :aria-label="t('canvasChat.history')">
+        <div v-if="drawerOpen" class="fixed inset-0 z-[260] bg-slate-900/50 p-3 lg:hidden" @click.self="drawerOpen = false">
+          <div class="studio-shell studio-panel flex h-full max-h-[calc(100dvh-1.5rem)] w-[min(22rem,88vw)] flex-col p-3 shadow-2xl" role="dialog" aria-modal="true" :aria-label="t('canvasChat.history')">
             <ChatDrawHistory
               v-bind="historyProps"
               closable
@@ -35,20 +35,22 @@
     </Teleport>
 
     <!-- 主列 -->
-    <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.25rem] border border-gray-200 bg-white/90 shadow-[0_16px_44px_-36px_rgba(15,23,42,0.45)] dark:border-dark-700 dark:bg-dark-900/80">
+    <main class="studio-panel relative flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- 顶栏 -->
-      <header class="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-3.5 py-2.5 dark:border-dark-700">
+      <header class="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-3.5 py-2.5" :style="{ borderColor: 'var(--st-border)' }">
         <div class="flex min-w-0 items-center gap-2">
-          <button type="button" :class="iconBtn" class="lg:hidden" :aria-label="t('canvasChat.openHistory')" :title="t('canvasChat.openHistory')" @click="drawerOpen = true"><Icon name="menu" size="sm" /></button>
-          <button v-if="collapsed" type="button" :class="iconBtn" class="hidden lg:flex" :aria-label="t('canvasChat.expandHistory')" :title="t('canvasChat.expandHistory')" @click="setCollapsed(false)"><Icon name="chevronRight" size="sm" /></button>
+          <button type="button" class="studio-icon-btn studio-mobile-only" :aria-label="t('canvasChat.openHistory')" :title="t('canvasChat.openHistory')" @click="drawerOpen = true"><Icon name="menu" size="sm" /></button>
+          <button v-if="collapsed" type="button" class="studio-icon-btn studio-desktop-only" :aria-label="t('canvasChat.expandHistory')" :title="t('canvasChat.expandHistory')" @click="setCollapsed(false)"><Icon name="chevronRight" size="sm" /></button>
           <div class="min-w-0">
             <div class="max-w-[min(32rem,48vw)] truncate text-sm font-bold text-gray-900 dark:text-white">{{ activeSession?.title || t('canvasChat.untitled') }}</div>
-            <div class="mt-0.5 text-xs leading-4 text-gray-400">{{ subtitle }}</div>
+            <div class="mt-0.5 flex items-center gap-1.5 text-xs leading-4 text-gray-400">
+              <span v-if="statusTone" class="studio-dot" :class="statusTone === 'ok' ? 'studio-dot--ok' : ''" aria-hidden="true"></span>{{ subtitle }}
+            </div>
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-1.5">
-          <button type="button" :class="pillBtn" :aria-label="t('canvasChat.newChat')" @click="onNewChat"><Icon name="plus" size="xs" /><span class="hidden sm:inline">{{ t('canvasChat.newChat') }}</span></button>
-          <button type="button" :class="pillBtn" :disabled="!turns.length" :aria-label="t('canvasChat.clear')" @click="onClear"><Icon name="trash" size="xs" /><span class="hidden sm:inline">{{ t('canvasChat.clear') }}</span></button>
+          <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :aria-label="t('canvasChat.newChat')" @click="onNewChat"><Icon name="plus" size="xs" aria-hidden="true" /><span class="hidden sm:inline">{{ t('canvasChat.newChat') }}</span></button>
+          <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :disabled="!turns.length" :aria-label="t('canvasChat.clear')" @click="onClear"><Icon name="trash" size="xs" aria-hidden="true" /><span class="hidden sm:inline">{{ t('canvasChat.clear') }}</span></button>
         </div>
       </header>
       <div v-if="initError" class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
@@ -67,17 +69,29 @@
           </div>
 
           <!-- 空态 -->
-          <div v-if="loaded && !turns.length && !polishing" class="flex min-h-[50vh] flex-col items-center justify-center px-4 py-10 text-center">
-            <h1 class="text-[clamp(1.8rem,5vw,3rem)] font-bold text-gray-900 dark:text-white">{{ t('canvasChat.emptyTitle') }}</h1>
-            <p class="mt-3.5 max-w-lg text-sm leading-[1.8] text-gray-500 dark:text-gray-400">{{ t('canvasChat.emptyDesc') }}</p>
-            <div class="mt-6 flex flex-wrap justify-center gap-2">
-              <button
-                v-for="ex in examples"
-                :key="ex"
-                type="button"
-                class="rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400 dark:hover:text-white"
-                @click="composer?.setText(ex)"
-              >{{ ex }}</button>
+          <div v-if="loaded && !turns.length && !polishing" class="flex min-h-[46vh] flex-col items-center justify-center px-2 py-8 text-center sm:px-4">
+            <span class="studio-empty-mark" aria-hidden="true"><Icon name="chat" size="lg" /></span>
+            <h1 class="studio-empty-title !text-[clamp(1.25rem,3.2vw,1.65rem)]">{{ t('canvasChat.emptyTitle') }}</h1>
+            <p class="studio-empty-text">{{ t('canvasChat.emptyDesc') }}</p>
+            <div class="mt-7 w-full max-w-xl">
+              <div class="mb-2.5 flex items-center gap-2.5" aria-hidden="true">
+                <span class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></span>
+                <span class="text-[11px] font-semibold text-gray-400">{{ t('canvasChat.tryExamples') }}</span>
+                <span class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></span>
+              </div>
+              <ul class="m-0 grid list-none gap-2 p-0">
+                <li v-for="ex in examples" :key="ex" class="min-w-0">
+                  <button
+                    type="button"
+                    class="group/ex flex w-full items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-left text-[12.5px] leading-[1.6] text-gray-600 transition-colors hover:border-emerald-300 hover:text-gray-900 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-emerald-700/70 dark:hover:text-white"
+                    @click="composer?.setText(ex)"
+                  >
+                    <Icon name="sparkles" size="xs" class="shrink-0 text-emerald-500" aria-hidden="true" />
+                    <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{{ ex }}</span>
+                    <Icon name="arrowRight" size="xs" class="shrink-0 text-gray-300 transition-colors group-hover/ex:text-emerald-500 dark:text-dark-500" aria-hidden="true" />
+                  </button>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -227,12 +241,11 @@ import {
   type ChatImage, type ChatTurn
 } from '@/composables/useChatDrawEngine'
 import { initAIOptions } from '@/composables/useAIPrompt'
+import './studio-shell.css'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
 
-const iconBtn = 'flex h-8 w-8 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white'
-const pillBtn = 'inline-flex h-8 items-center gap-1 rounded-xl border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:border-dark-400'
 const msgActions = 'flex items-center gap-1 transition-opacity sm:pointer-events-none sm:opacity-0 sm:group-hover/u:pointer-events-auto sm:group-hover/u:opacity-100 sm:group-hover/a:pointer-events-auto sm:group-hover/a:opacity-100 sm:focus-within:pointer-events-auto sm:focus-within:opacity-100'
 const msgActBtn = 'flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:text-white'
 const overlayBtn = 'flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-800 shadow transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-dark-800/90 dark:text-gray-100 dark:hover:bg-dark-700'
@@ -302,6 +315,12 @@ const subtitle = computed(() => {
   const run = turns.value.find(x => x.status === 'running')
   if (run) return t('canvasChat.statusRunning', { n: elapsedOf(run) })
   return turns.value.length ? t('canvasChat.statusTurns', { n: activeSession.value?.turnCount ?? turns.value.length }) : t('canvasChat.statusReady')
+})
+/** 状态点:仅在真实加载完成后显示,生成中用中性色 */
+const statusTone = computed<'ok' | 'busy' | ''>(() => {
+  if (!loaded.value) return ''
+  if (polishing.value || turns.value.some(x => x.status === 'running')) return 'busy'
+  return 'ok'
 })
 async function onClear() {
   if (!window.confirm(t('canvasChat.clearConfirm'))) return

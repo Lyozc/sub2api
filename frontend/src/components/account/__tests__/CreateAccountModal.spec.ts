@@ -12,6 +12,7 @@ const {
   probeUpstreamBillingMock,
   syncUpstreamModelsMock,
   showWarningMock,
+  showErrorMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
   authIsSimpleMode,
@@ -20,6 +21,7 @@ const {
   probeUpstreamBillingMock: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
   showWarningMock: vi.fn(),
+  showErrorMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
@@ -27,7 +29,7 @@ const {
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: showErrorMock,
     showSuccess: vi.fn(),
     showWarning: showWarningMock,
   }),
@@ -206,6 +208,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
     showWarningMock.mockReset()
+    showErrorMock.mockReset()
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -218,6 +221,31 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it.each(['dashboard-key', 'access| ', ' |secret'])('blocks an invalid Kling account key: %s', async (key) => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-kling"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Kling relay')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue(key)
+    expect(wrapper.text()).toContain('admin.accounts.kling.apiKeyHint')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.kling.invalidApiKey')
+    expect(createAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('creates a Kling account with the official credential pair', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-kling"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Kling relay')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('access|secret')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({ platform: 'kling', credentials: expect.objectContaining({ api_key: 'access|secret' }) }))
+    expect(showErrorMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })

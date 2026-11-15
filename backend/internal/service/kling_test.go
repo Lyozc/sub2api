@@ -119,3 +119,16 @@ func TestKlingRequestResolutionAndBillingModel(t *testing.T) {
 		t.Fatalf("nil body billing model = %q", got)
 	}
 }
+
+func TestKlingRequestCustomDurationSeconds(t *testing.T) {
+	for _, body := range []string{`{"duration":7}`, `{"duration":"7"}`, `{"settings":{"duration":7}}`, `{"settings":{"duration":"7"}}`} {
+		if got := KlingRequestDurationSeconds([]byte(body)); got != 7 {
+			t.Errorf("duration for %s = %d, want 7", body, got)
+		}
+	}
+	for _, body := range []string{`{}`, `{"duration":null}`, `{"duration":true}`, `{"duration":5.5}`, `{"duration":-1}`} {
+		if got := KlingRequestDurationSeconds([]byte(body)); got != 5 {
+			t.Errorf("default duration for %s = %d, want 5", body, got)
+		}
+	}
+}
