@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { creativeStudioAPI as api, type StudioProject, type StudioAsset, type StudioJob, type StudioSnapshot, type StudioModel, type StudioParams, type StudioTimeline, type StudioSettings, type StudioPreflight } from '@/api/creativeStudio'
 import type { CreativeCanvasKind, CreativeCanvasNode } from '@/types/creativeCanvas'
 import { sessionOwnerKey } from './studioSession'
@@ -38,8 +38,10 @@ function errorMessage(e: unknown) {
 }
 
 export function useCreativeStudio(tr: Translate) {
-  const projects = ref<StudioProject[]>([])
-  const project = ref<StudioProject | null>(null)
+  // Vue Flow nodes include component types; keep their public types without
+  // recursively unwrapping them. ref still makes the project reactive at runtime.
+  const projects: Ref<StudioProject[]> = ref([])
+  const project: Ref<StudioProject | null> = ref(null)
   const assets = ref<StudioAsset[]>([])
   const jobs = ref<StudioJob[]>([])
   const imageModels = ref<StudioModel[]>([])
