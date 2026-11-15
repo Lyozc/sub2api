@@ -1060,7 +1060,7 @@ func extractKlingUpstreamModelIDs(body []byte) ([]string, error) {
 		return nil, err
 	}
 	if envelope.Code == nil || *envelope.Code != 0 {
-		return nil, errors.New("Kling model list returned an unsuccessful envelope")
+		return nil, errors.New("kling model list returned an unsuccessful envelope")
 	}
 	models := make([]string, 0, len(envelope.Data.Models))
 	for _, model := range envelope.Data.Models {
