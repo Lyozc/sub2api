@@ -218,11 +218,15 @@ func (h *OpenAIGatewayHandler) recordKlingUsage(c *gin.Context, apiKey *service.
 	if taskID != "" {
 		forward.RequestID = taskID
 	}
+	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+	userAgent := c.GetHeader("User-Agent")
+	ipAddress := c.ClientIP()
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), forward, func(ctx context.Context) {
 		_ = h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result: forward, APIKey: apiKey, User: apiKey.User, Account: account,
-			InboundEndpoint: GetInboundEndpoint(c), UpstreamEndpoint: GetUpstreamEndpoint(c, account.Platform),
-			UserAgent: c.GetHeader("User-Agent"), IPAddress: c.ClientIP(),
+			InboundEndpoint: inboundEndpoint, UpstreamEndpoint: upstreamEndpoint,
+			UserAgent: userAgent, IPAddress: ipAddress,
 			RequestPayloadHash: service.HashUsageRequestPayload([]byte(firstNonEmptyString(model, taskID))),
 			APIKeyService:      h.apiKeyService, QuotaPlatform: service.QuotaPlatform(ctx, apiKey),
 		})

@@ -33,7 +33,7 @@ func probeKlingReferenceVideo(ctx context.Context, raw string) (float64, error) 
 	if err != nil {
 		return 0, fmt.Errorf("unable to read reference video: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	const maxBytes = 100 * 1024 * 1024
 	if resp.StatusCode != 200 || resp.ContentLength > maxBytes {
 		return 0, fmt.Errorf("reference video must be accessible and at most 100 MiB")
@@ -42,7 +42,7 @@ func probeKlingReferenceVideo(ctx context.Context, raw string) (float64, error) 
 	if err != nil {
 		return 0, err
 	}
-	defer os.Remove(file.Name())
+	defer func() { _ = os.Remove(file.Name()) }()
 	size, copyErr := io.Copy(file, io.LimitReader(resp.Body, maxBytes+1))
 	closeErr := file.Close()
 	if copyErr != nil || closeErr != nil || size > maxBytes {

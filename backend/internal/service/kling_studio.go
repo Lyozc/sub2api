@@ -35,7 +35,7 @@ func BuildKlingStudioRequest(body []byte) (KlingEndpoint, []byte, string, error)
 	}
 	if duration := gjson.GetBytes(body, "duration"); duration.Exists() {
 		if _, ok := positiveKlingDuration(duration); !ok {
-			return "", nil, "", errors.New("Kling duration must be a positive integer number of seconds")
+			return "", nil, "", errors.New("kling duration must be a positive integer number of seconds")
 		}
 	}
 	if gjson.GetBytes(body, "video_mode").Exists() || gjson.GetBytes(body, "reference_images").Exists() || gjson.GetBytes(body, "reference_media").Exists() {
@@ -85,23 +85,25 @@ func BuildKlingStudioRequest(body []byte) (KlingEndpoint, []byte, string, error)
 			endpoint = KlingEndpointKling4Image
 		}
 	}
+	var kling4Settings map[string]any
 	if model == "kling-4.0" {
+		kling4Settings = map[string]any{"duration": KlingRequestDurationSeconds(body), "aspect_ratio": aspect}
 		payload = map[string]any{
 			"prompt":   prompt,
-			"settings": map[string]any{"duration": KlingRequestDurationSeconds(body), "aspect_ratio": aspect},
+			"settings": kling4Settings,
 			"options":  map[string]any{},
 		}
 		if endpoint == KlingEndpointKling4Image {
 			payload["contents"] = []map[string]string{{"type": "first_frame", "url": image.String()}}
-			delete(payload["settings"].(map[string]any), "aspect_ratio")
+			delete(kling4Settings, "aspect_ratio")
 		}
 	}
 	if resolution := gjson.GetBytes(body, "resolution"); resolution.Exists() {
 		if resolution.Type != gjson.String || (resolution.String() != "720p" && resolution.String() != "1080p" && resolution.String() != "4k") {
-			return "", nil, "", errors.New("Kling resolution must be 720p, 1080p or 4k")
+			return "", nil, "", errors.New("kling resolution must be 720p, 1080p or 4k")
 		}
 		if model == "kling-4.0" {
-			payload["settings"].(map[string]any)["resolution"] = resolution.String()
+			kling4Settings["resolution"] = resolution.String()
 		} else {
 			payload["resolution"] = resolution.String()
 		}
@@ -112,7 +114,7 @@ func BuildKlingStudioRequest(body []byte) (KlingEndpoint, []byte, string, error)
 			continue
 		}
 		if model == "kling-4.0" {
-			return "", nil, "", fmt.Errorf("Kling 4.0 dedicated API does not support %s", field)
+			return "", nil, "", fmt.Errorf("kling 4.0 dedicated API does not support %s", field)
 		}
 		switch field {
 		case "mode":
@@ -143,7 +145,7 @@ func BuildKlingStudioRequest(body []byte) (KlingEndpoint, []byte, string, error)
 		}
 		if resolution := VideoStudioCapabilities(model)[generationMode].DefaultResolution; resolution != "" {
 			if model == "kling-4.0" {
-				payload["settings"].(map[string]any)["resolution"] = resolution
+				kling4Settings["resolution"] = resolution
 			} else {
 				payload["resolution"] = resolution
 			}
@@ -221,7 +223,7 @@ func (s *OpenAIGatewayService) ForwardKlingStudioContent(ctx context.Context, c 
 	if err != nil {
 		return fmt.Errorf("Kling content download failed: %s", sanitizeStreamError(err))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
 		return fmt.Errorf("Kling content download returned status %d", resp.StatusCode)
 	}

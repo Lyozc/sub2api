@@ -38,7 +38,7 @@ func prepareStudioChat(keys *service.APIKeyService) gin.HandlerFunc {
 		for index, message := range req.Messages {
 			length := utf8.RuneCountInString(message.Content)
 			total += length
-			if (message.Role != "user" && message.Role != "assistant" && !(message.Role == "system" && index == 0)) || strings.TrimSpace(message.Content) == "" || length > 32000 || total > 200000 {
+			if (message.Role != "user" && message.Role != "assistant" && (message.Role != "system" || index != 0)) || strings.TrimSpace(message.Content) == "" || length > 32000 || total > 200000 {
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid message role or text length"})
 				return
 			}
