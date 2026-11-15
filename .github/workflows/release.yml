@@ -137,7 +137,7 @@ jobs:
           check-latest: false
           cache: false
       - name: Verify Go version
-        run: go version | grep -q 'go1.27.3'
+        run: go version | grep -q 'go1.27.4'
       - name: Restore target-specific Go cache
         id: go-cache
         uses: actions/cache/restore@v6
@@ -196,6 +196,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      actions: read
     env:
       SIMPLE_RELEASE: ${{ needs.prepare.outputs.simple }}
       DRY_RUN: ${{ needs.prepare.outputs.dry_run }}
@@ -225,6 +226,11 @@ jobs:
           args=(--version "$RELEASE_VERSION" --sha "$RELEASE_SHA" --input release-input --output .release-context)
           if [[ "$SIMPLE_RELEASE" == true ]]; then args+=(--simple); fi
           python "$RUNNER_TEMP/release-tools/release_matrix.py" contexts "${args[@]}"
+      - name: Require CI and security scans before publication
+        if: ${{ env.DRY_RUN != 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python "$RUNNER_TEMP/release-tools/wait_release_checks.py"
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
