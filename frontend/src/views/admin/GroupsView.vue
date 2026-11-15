@@ -156,11 +156,13 @@
                               ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
                               : value === 'minimax'
                                 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                              : value === 'opencode_go'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                                 : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
+              {{ t("admin.groups.platforms." + value, platformLabel(value)) }}
             </span>
           </template>
 
@@ -486,26 +488,26 @@
         class="space-y-5"
       >
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="createForm.name"
-            type="text"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             :placeholder="t('admin.groups.enterGroupName')"
             data-tour="group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="createForm.description"
+            v-model:i18n="createForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
             :placeholder="t('admin.groups.optionalDescription')"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -623,6 +625,37 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+        </div>
+        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700">
+          <div>
+            <p class="input-label">{{ t("admin.groups.form.tokenBillingTitle") }}</p>
+            <p class="input-hint">{{ t("admin.groups.form.tokenBillingDescription") }}</p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.inputTokenMultiplier") }}</label>
+              <input v-model.number="createForm.input_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.outputTokenMultiplier") }}</label>
+              <input v-model.number="createForm.output_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.cacheCreationTokenMultiplier") }}</label>
+              <input v-model.number="createForm.cache_creation_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.cacheReadTokenMultiplier") }}</label>
+              <input v-model.number="createForm.cache_read_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <Toggle v-model="createForm.return_billable_usage" />
+            <div>
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.form.returnBillableUsage") }}</p>
+              <p class="input-hint">{{ t("admin.groups.form.returnBillableUsageHint") }}</p>
+            </div>
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -836,7 +869,7 @@
                 <span class="min-w-0 flex-1 break-all text-sm text-gray-700 dark:text-gray-300">
                   {{ item.id }}
                   <span
-                    v-if="item.id.endsWith('*')"
+                    v-if="item.id.includes('*')"
                     class="ml-1 rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
                   >
                     {{ t("admin.groups.modelAllowlist.wildcardTag") }}
@@ -916,6 +949,20 @@
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t(imagePricingI18nKey(createForm.platform, "independentMultiplier")) }}
+            </label>
+            <label
+              v-if="
+                createForm.allow_image_generation &&
+                (createForm.platform === 'composite' || createForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="createForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
             </label>
           </div>
           <div
@@ -1039,7 +1086,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(createForm.platform)"
           class="border-t pt-4"
@@ -1050,7 +1097,7 @@
             {{ t(videoPricingI18nKey("title")) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingDescriptionKey(createForm.platform)) }}
           </p>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -1078,13 +1125,13 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
+          <div :class="createForm.platform === 'kling' ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-3 gap-3'">
+            <div v-if="createForm.platform !== 'kling'">
               <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_480p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_480p')"
@@ -1095,7 +1142,7 @@
               <input
                 v-model.number="createForm.video_price_720p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_720p')"
@@ -1106,7 +1153,7 @@
               <input
                 v-model.number="createForm.video_price_1080p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_1080p')"
@@ -1115,45 +1162,59 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="create-grok-video-model-prices"
+            :data-testid="createForm.platform === 'kling' ? 'create-kling-video-model-prices' : 'create-grok-video-model-prices'"
           >
             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+              {{ t(videoPricingOverridesKey(createForm.platform)) }}
+            </p>
+            <p class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              {{ t('admin.groups.videoPricing.entryExample') }}
             </p>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices, createForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+                :data-video-price-model="family.key"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
+                <div class="mb-3 min-w-0 border-b border-gray-200 pb-2 dark:border-dark-600">
+                  <h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ family.label.split(' · ')[0] }}</h5>
+                  <p class="mt-0.5 break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{ family.key }}</p>
                 </div>
-                <label
-                  v-for="resolution in grokVideoPriceResolutions"
-                  :key="resolution.key"
-                  class="block"
-                >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                    {{ resolution.label }} ($/s)
-                  </span>
-                  <input
-                    v-model.number="createForm.video_model_prices[family.key][resolution.key]"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    class="input"
-                    :data-testid="`create-grok-video-price-${family.key}-${resolution.key}`"
-                  />
-                </label>
+                <div class="grid grid-cols-1 items-start gap-3 min-[380px]:grid-cols-3">
+                  <label
+                    v-for="resolution in videoPriceResolutions(createForm.platform)"
+                    :key="resolution.key"
+                    class="flex min-w-0 flex-col"
+                  >
+                    <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ resolution.label }} · {{ t('admin.groups.videoPricing.pricePerSecondUnit') }}
+                    </span>
+                    <input
+                      v-model.number="createForm.video_model_prices[family.key][resolution.key]"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      :data-testid="`create-${createForm.platform}-video-price-${family.key}-${resolution.key}`"
+                      :disabled="!videoModelSupportsResolution(family.key, resolution.key, createForm.platform)"
+                      :aria-label="`${family.label} ${resolution.label} (USD/s)`"
+                      :placeholder="t(videoModelSupportsResolution(family.key, resolution.key, createForm.platform) ? 'admin.groups.videoPricing.inheritPrice' : 'admin.groups.videoPricing.unsupportedResolution')"
+                    />
+                    <span v-if="videoModelSupportsResolution(family.key, resolution.key, createForm.platform)" class="mt-1 min-h-4 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                      {{ videoModelPriceHint(createForm, family.key, resolution.key) }}
+                    </span>
+                    <span v-else class="mt-1 min-h-4 text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ t('admin.groups.videoPricing.unsupportedResolution') }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingModeHintKey(createForm.platform)) }}
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
@@ -2125,24 +2186,24 @@
         class="space-y-5"
       >
         <div>
-          <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-          <input
+          <GroupI18nField
             v-model="editForm.name"
-            type="text"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.name')"
+            field="name"
             required
-            class="input"
             data-tour="edit-group-form-name"
           />
         </div>
         <div>
-          <label class="input-label">{{
-            t("admin.groups.form.description")
-          }}</label>
-          <textarea
+          <GroupI18nField
             v-model="editForm.description"
+            v-model:i18n="editForm.i18n"
+            :label="t('admin.groups.form.description')"
+            field="description"
+            multiline
             rows="3"
-            class="input"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="input-label">{{
@@ -2261,6 +2322,37 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700">
+          <div>
+            <p class="input-label">{{ t("admin.groups.form.tokenBillingTitle") }}</p>
+            <p class="input-hint">{{ t("admin.groups.form.tokenBillingDescription") }}</p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.inputTokenMultiplier") }}</label>
+              <input v-model.number="editForm.input_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.outputTokenMultiplier") }}</label>
+              <input v-model.number="editForm.output_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.cacheCreationTokenMultiplier") }}</label>
+              <input v-model.number="editForm.cache_creation_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.form.cacheReadTokenMultiplier") }}</label>
+              <input v-model.number="editForm.cache_read_token_multiplier" type="number" min="0" max="100" step="0.01" required class="input" />
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <Toggle v-model="editForm.return_billable_usage" />
+            <div>
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.form.returnBillableUsage") }}</p>
+              <p class="input-hint">{{ t("admin.groups.form.returnBillableUsageHint") }}</p>
+            </div>
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -2476,7 +2568,7 @@
                 <span class="min-w-0 flex-1 break-all text-sm text-gray-700 dark:text-gray-300">
                   {{ item.id }}
                   <span
-                    v-if="item.id.endsWith('*')"
+                    v-if="item.id.includes('*')"
                     class="ml-1 rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
                   >
                     {{ t("admin.groups.modelAllowlist.wildcardTag") }}
@@ -2556,6 +2648,20 @@
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t(imagePricingI18nKey(editForm.platform, "independentMultiplier")) }}
+            </label>
+            <label
+              v-if="
+                editForm.allow_image_generation &&
+                (editForm.platform === 'composite' || editForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="editForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
             </label>
           </div>
           <div
@@ -2679,7 +2785,7 @@
           </p>
         </div>
 
-        <!-- 视频生成计费配置（仅 Grok 平台） -->
+        <!-- 视频生成计费配置 -->
         <div
           v-if="supportsVideoPricingPlatform(editForm.platform)"
           class="border-t pt-4"
@@ -2690,7 +2796,7 @@
             {{ t(videoPricingI18nKey("title")) }}
           </label>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t(videoPricingI18nKey("description")) }}
+            {{ t(videoPricingDescriptionKey(editForm.platform)) }}
           </p>
           <div class="mb-4">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -2718,13 +2824,13 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
+          <div :class="editForm.platform === 'kling' ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-3 gap-3'">
+            <div v-if="editForm.platform !== 'kling'">
               <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_480p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_480p')"
@@ -2735,7 +2841,7 @@
               <input
                 v-model.number="editForm.video_price_720p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_720p')"
@@ -2746,7 +2852,7 @@
               <input
                 v-model.number="editForm.video_price_1080p"
                 type="number"
-                step="0.001"
+                step="0.000001"
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_1080p')"
@@ -2755,45 +2861,59 @@
           </div>
           <div
             class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
-            data-testid="edit-grok-video-model-prices"
+            :data-testid="editForm.platform === 'kling' ? 'edit-kling-video-model-prices' : 'edit-grok-video-model-prices'"
           >
             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+              {{ t(videoPricingOverridesKey(editForm.platform)) }}
+            </p>
+            <p class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              {{ t('admin.groups.videoPricing.entryExample') }}
             </p>
             <div class="mt-3 space-y-3">
               <div
-                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices, editForm.platform)"
                 :key="family.key"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+                class="rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+                :data-video-price-model="family.key"
               >
-                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {{ family.label }}
+                <div class="mb-3 min-w-0 border-b border-gray-200 pb-2 dark:border-dark-600">
+                  <h5 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ family.label.split(' · ')[0] }}</h5>
+                  <p class="mt-0.5 break-all font-mono text-xs text-gray-500 dark:text-gray-400">{{ family.key }}</p>
                 </div>
-                <label
-                  v-for="resolution in grokVideoPriceResolutions"
-                  :key="resolution.key"
-                  class="block"
-                >
-                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-                    {{ resolution.label }} ($/s)
-                  </span>
-                  <input
-                    v-model.number="editForm.video_model_prices[family.key][resolution.key]"
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    class="input"
-                    :data-testid="`edit-grok-video-price-${family.key}-${resolution.key}`"
-                  />
-                </label>
+                <div class="grid grid-cols-1 items-start gap-3 min-[380px]:grid-cols-3">
+                  <label
+                    v-for="resolution in videoPriceResolutions(editForm.platform)"
+                    :key="resolution.key"
+                    class="flex min-w-0 flex-col"
+                  >
+                    <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ resolution.label }} · {{ t('admin.groups.videoPricing.pricePerSecondUnit') }}
+                    </span>
+                    <input
+                      v-model.number="editForm.video_model_prices[family.key][resolution.key]"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      :data-testid="`edit-${editForm.platform}-video-price-${family.key}-${resolution.key}`"
+                      :disabled="!videoModelSupportsResolution(family.key, resolution.key, editForm.platform)"
+                      :aria-label="`${family.label} ${resolution.label} (USD/s)`"
+                      :placeholder="t(videoModelSupportsResolution(family.key, resolution.key, editForm.platform) ? 'admin.groups.videoPricing.inheritPrice' : 'admin.groups.videoPricing.unsupportedResolution')"
+                    />
+                    <span v-if="videoModelSupportsResolution(family.key, resolution.key, editForm.platform)" class="mt-1 min-h-4 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                      {{ videoModelPriceHint(editForm, family.key, resolution.key) }}
+                    </span>
+                    <span v-else class="mt-1 min-h-4 text-[11px] leading-4 text-gray-400 dark:text-gray-500">{{ t('admin.groups.videoPricing.unsupportedResolution') }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(videoPricingI18nKey("modeHint")) }}
+            {{ t(videoPricingModeHintKey(editForm.platform)) }}
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
@@ -3831,10 +3951,12 @@
                                   ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
                                   : group.platform === 'minimax'
                                     ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                  : group.platform === 'opencode_go'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                                     : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
-                  {{ t("admin.groups.platforms." + group.platform) }}
+                  {{ t("admin.groups.platforms." + group.platform, platformLabel(group.platform)) }}
                 </span>
               </div>
             </div>
@@ -4275,6 +4397,7 @@ import type {
   CompositeRouteDecision,
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
+  GroupI18n,
   GroupPlatform,
   SubscriptionType,
 } from "@/types";
@@ -4293,7 +4416,9 @@ import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
+import { platformLabel } from "@/utils/platformColors";
 import Icon from "@/components/icons/Icon.vue";
+import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
@@ -4305,9 +4430,11 @@ import {
   apiIntervalsToForm,
   createDefaultTimePricingForm,
   formIntervalsToAPI,
+  formReasoningEffortMultipliersToAPI,
   mTokToPerToken,
   perTokenToMTok,
   toNullableNumber,
+  validateReasoningEffortMultipliers,
 } from "@/components/admin/channel/types";
 import type { ChannelModelPricing } from "@/api/admin/channels";
 import { VueDraggable } from "vue-draggable-plus";
@@ -4355,6 +4482,7 @@ import {
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
 import {
+  defaultAllowImageGenerationForPlatform,
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
   getImagePricePlaceholder,
@@ -4366,7 +4494,8 @@ import {
 } from "./groupsImagePricing";
 import {
   createVideoModelPricesForm,
-  grokVideoPriceResolutions,
+  videoPriceResolutions,
+  videoModelSupportsResolution,
   serializeVideoModelPrices,
   videoModelPriceFamilyRows,
 } from "./groupsVideoModelPricing";
@@ -4381,7 +4510,9 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   output_price: null,
   cache_write_price: null,
   cache_write_1h_price: null,
+  cache_write_12h_price: null,
   cache_read_price: null,
+  reasoning_effort_multipliers: null,
   image_input_price: null,
   image_output_price: null,
   per_request_price: null,
@@ -4402,7 +4533,11 @@ const groupPricingFromAPI = (
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(entry.cache_write_12h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
+    reasoning_effort_multipliers: entry.reasoning_effort_multipliers
+      ? { ...entry.reasoning_effort_multipliers }
+      : null,
     image_input_price: perTokenToMTok(entry.image_input_price),
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
@@ -4424,7 +4559,11 @@ const groupPricingToAPI = (
       output_price: mTokToPerToken(entry.output_price),
       cache_write_price: mTokToPerToken(entry.cache_write_price),
       cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
+      cache_write_12h_price: mTokToPerToken(entry.cache_write_12h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
+      reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(
+        entry.reasoning_effort_multipliers,
+      ),
       image_input_price: mTokToPerToken(entry.image_input_price),
       image_output_price: mTokToPerToken(entry.image_output_price),
       per_request_price: toNullableNumber(entry.per_request_price),
@@ -4733,7 +4872,7 @@ const canCopyAccountsFromGroup = (targetPlatform: GroupPlatform, sourcePlatform:
 
 const copyAccountsGroupLabel = (g: AdminGroup) => {
   const count = g.account_count || 0;
-  const platform = t("admin.groups.platforms." + g.platform);
+  const platform = t("admin.groups.platforms." + g.platform, platformLabel(g.platform));
   return `${g.name} - ${platform} (${t("admin.groups.accountsCount", { count })})`;
 };
 
@@ -4927,8 +5066,14 @@ const submitEditAllowlistCustomEntry = () => {
 const createForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  input_token_multiplier: 1.0,
+  output_token_multiplier: 1.0,
+  cache_creation_token_multiplier: 1.0,
+  cache_read_token_multiplier: 1.0,
+  return_billable_usage: false,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -4941,6 +5086,7 @@ const createForm = reactive({
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -5291,8 +5437,14 @@ const convertApiFormatToRoutingRules = async (
 const editForm = reactive({
   name: "",
   description: "",
+  i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  input_token_multiplier: 1.0,
+  output_token_multiplier: 1.0,
+  cache_creation_token_multiplier: 1.0,
+  cache_read_token_multiplier: 1.0,
+  return_billable_usage: false,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5306,6 +5458,7 @@ const editForm = reactive({
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -5369,6 +5522,7 @@ type ImagePricingFormState = {
   platform: GroupPlatform;
   allow_image_generation: boolean;
   allow_batch_image_generation: boolean;
+  image_count_billing: boolean;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
@@ -5391,6 +5545,7 @@ type VideoPricingFormState = {
   video_price_480p: number | string | null;
   video_price_720p: number | string | null;
   video_price_1080p: number | string | null;
+  video_model_prices: ReturnType<typeof createVideoModelPricesForm>;
 };
 
 const imagePricingTiers = [
@@ -5465,7 +5620,7 @@ const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
   const multiplier = form.video_rate_independent
     ? normalizePreviewNumber(form.video_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
-  return videoPricingTiers.map((tier) => {
+  return videoPricingTiers.filter(tier => form.platform !== "kling" || tier.key !== "video_price_480p").map((tier) => {
     const basePrice =
       parsePreviewPrice(form[tier.key]) ??
       getDefaultVideoPreviewPrice(form.platform, tier.key);
@@ -5477,6 +5632,24 @@ const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
     };
   });
 };
+
+const videoPricingDescriptionKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingDescription' : 'description'}`;
+const videoPricingOverridesKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingOverridesDescription' : 'modelOverridesDescription'}`;
+const videoPricingModeHintKey = (platform: string) => `admin.groups.videoPricing.${platform === 'kling' ? 'klingModeHint' : 'modeHint'}`;
+function videoModelFinalPricePreview(form: VideoPricingFormState, family: string, resolution: string) {
+  const flat = resolution === '720p' ? form.video_price_720p : resolution === '1080p' ? form.video_price_1080p : resolution === '480p' ? form.video_price_480p : null;
+  const price = parsePreviewPrice(form.video_model_prices[family]?.[resolution]) ?? parsePreviewPrice(flat);
+  const multiplier = form.video_rate_independent ? normalizePreviewNumber(form.video_rate_multiplier,1) : normalizePreviewNumber(form.rate_multiplier,1);
+  return price == null ? t('admin.groups.videoPricing.notConfigured') : formatVideoPricePreview(price * multiplier);
+}
+function videoModelPriceHint(form: VideoPricingFormState, family: string, resolution: string) {
+  const price = videoModelFinalPricePreview(form, family, resolution);
+  return price === t('admin.groups.videoPricing.notConfigured')
+    ? t('admin.groups.videoPricing.fallbackPriceHint')
+    : t('admin.groups.videoPricing.afterMultiplier', { price });
+}
+watch(() => createForm.platform, platform => { createForm.video_model_prices = createVideoModelPricesForm(createForm.video_model_prices,platform); });
+watch(() => editForm.platform, platform => { editForm.video_model_prices = createVideoModelPricesForm(editForm.video_model_prices,platform); });
 
 const createImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(createForm),
@@ -5515,7 +5688,12 @@ const editWebSearchFinalPricePreview = computed(() =>
 const resetDisabledBatchImagePricing = (
   form: Pick<
     ImagePricingFormState,
-    "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
+    | "platform"
+    | "allow_image_generation"
+    | "allow_batch_image_generation"
+    | "image_count_billing"
+    | "batch_image_discount_multiplier"
+    | "batch_image_hold_multiplier"
   >,
 ) => {
   if (form.platform !== "gemini" || !form.allow_image_generation) {
@@ -5524,6 +5702,12 @@ const resetDisabledBatchImagePricing = (
   if (!form.allow_batch_image_generation) {
     form.batch_image_discount_multiplier = 0.5;
     form.batch_image_hold_multiplier = 0.6;
+  }
+  if (
+    !form.allow_image_generation ||
+    (form.platform !== "composite" && form.platform !== "openai")
+  ) {
+    form.image_count_billing = false;
   }
 };
 
@@ -5754,8 +5938,14 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
+  createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.input_token_multiplier = 1.0;
+  createForm.output_token_multiplier = 1.0;
+  createForm.cache_creation_token_multiplier = 1.0;
+  createForm.cache_read_token_multiplier = 1.0;
+  createForm.return_billable_usage = false;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -5763,6 +5953,7 @@ const closeCreateModal = () => {
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
+  createForm.image_count_billing = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
@@ -5775,7 +5966,7 @@ const closeCreateModal = () => {
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
-  createForm.video_model_prices = createVideoModelPricesForm();
+  createForm.video_model_prices = createVideoModelPricesForm(undefined, createForm.platform);
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
@@ -5853,6 +6044,17 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean => {
+  for (const entry of pricing) {
+    const error = validateReasoningEffortMultipliers(entry.reasoning_effort_multipliers, t);
+    if (error) {
+      appStore.showError(`${entry.models.join(", ") || t("admin.channels.form.unnamed")}: ${error}`);
+      return false;
+    }
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -5868,6 +6070,7 @@ const handleCreateGroup = async () => {
   if (!validateProfitControlForm(createForm)) {
     return;
   }
+  if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
     createModelAllowlistState.enabled &&
@@ -5997,6 +6200,7 @@ const handleCreateGroup = async () => {
       ? {
           name: createForm.name,
           description: createForm.description,
+          i18n: createForm.i18n,
           platform: createForm.platform,
         }
       : requestData;
@@ -6023,8 +6227,19 @@ const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
+  editForm.i18n = Object.fromEntries(
+    Object.entries(group.i18n ?? {}).map(([locale, text]) => [
+      locale,
+      { ...text },
+    ]),
+  );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.input_token_multiplier = group.input_token_multiplier ?? 1.0;
+  editForm.output_token_multiplier = group.output_token_multiplier ?? 1.0;
+  editForm.cache_creation_token_multiplier = group.cache_creation_token_multiplier ?? 1.0;
+  editForm.cache_read_token_multiplier = group.cache_read_token_multiplier ?? 1.0;
+  editForm.return_billable_usage = group.return_billable_usage ?? false;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -6039,6 +6254,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
+  editForm.image_count_billing = group.image_count_billing ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
@@ -6053,7 +6269,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
   editForm.video_model_prices = createVideoModelPricesForm(
-    group.video_model_prices,
+    group.video_model_prices, group.platform,
   );
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.search_price_per_1k = group.search_price_per_1k ?? null;
@@ -6157,6 +6373,11 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.input_token_multiplier = 1.0;
+  editForm.output_token_multiplier = 1.0;
+  editForm.cache_creation_token_multiplier = 1.0;
+  editForm.cache_read_token_multiplier = 1.0;
+  editForm.return_billable_usage = false;
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
@@ -6165,7 +6386,7 @@ const closeEditModal = () => {
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
-  editForm.video_model_prices = createVideoModelPricesForm();
+  editForm.video_model_prices = createVideoModelPricesForm(undefined, editForm.platform);
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
@@ -6199,6 +6420,7 @@ const handleUpdateGroup = async () => {
   if (!validateProfitControlForm(editForm)) {
     return;
   }
+  if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
     editModelAllowlistState.enabled &&
@@ -6347,6 +6569,7 @@ const handleUpdateGroup = async () => {
       ? {
           name: editForm.name,
           description: editForm.description,
+          i18n: editForm.i18n,
         }
       : payload;
     await adminAPI.groups.update(editingGroup.value.id, requestData);
@@ -6426,7 +6649,7 @@ const formatCompositeEndpoint = (endpoint: CompositeRouteEndpoint) =>
 
 const formatCompositePlatform = (platform: string) => {
   if (!platform) return "—";
-  return t(`admin.groups.platforms.${platform}`);
+  return t(`admin.groups.platforms.${platform}`, platformLabel(platform));
 };
 
 const compositeRouteSourceLabel = (source: string) => {
@@ -6686,6 +6909,7 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
+    createForm.allow_image_generation = defaultAllowImageGenerationForPlatform(newVal);
     resetDisabledBatchImagePricing(createForm);
     resetModelAllowlistState(createModelAllowlistState);
     loadModelAllowlistCandidates("create", 0, newVal);

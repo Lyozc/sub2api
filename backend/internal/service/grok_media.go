@@ -41,10 +41,13 @@ func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 }
 
 func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
-	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent
+	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent || e == SeedanceEndpointStatus || e == SeedanceEndpointDelete
 }
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
+	if e == SeedanceEndpointCreate {
+		return true
+	}
 	switch e {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits, GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		return true
@@ -174,6 +177,9 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "image"))
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
+	// 兼容 OneAPI/xAI 风格字段:视频工作台前端与部分客户端以 image_url 传参考图
+	appendJSONImageURLs(gjson.GetBytes(body, "image_url"))
+	appendJSONImageURLs(gjson.GetBytes(body, "image_urls"))
 	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
 }
 
@@ -228,7 +234,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			_ = part.Close()
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
+		// The body is already bounded by the request body limit; truncating a part
+		// here would forward a corrupt image upstream.
+		data, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
 			return
@@ -291,6 +299,19 @@ func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) 
 	return "grok-video:" + DeriveSessionHashFromSeed(ownerSeed)
 }
 
+// GrokMediaVideoRequestSessionHashV2 密钥无关的任务归属哈希。
+// 旧版掺入 apiKeyID:多密钥/换密钥轮询(例如视频工作台为每个分组各托管一把密钥,
+// 或用户重建密钥)时哈希变化,导致状态/内容轮询解析不到创建时的账号绑定。
+// V2 只含 userID+requestID,同一任务在任何密钥下都解析到同一绑定。
+func GrokMediaVideoRequestSessionHashV2(requestID string, userID int64) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || userID <= 0 {
+		return ""
+	}
+	ownerSeed := fmt.Sprintf("%d:%s", userID, requestID)
+	return "grok-video:" + DeriveSessionHashFromSeed(ownerSeed)
+}
+
 func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	ctx context.Context,
 	groupID *int64,
@@ -300,9 +321,10 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 	if s == nil || s.cache == nil {
 		return fmt.Errorf("grok video request binding cache is unavailable")
 	}
-	sessionHash := GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)
-	cacheKey := s.openAISessionCacheKey(sessionHash)
-	if cacheKey == "" || accountID <= 0 {
+	v2Hash := GrokMediaVideoRequestSessionHashV2(requestID, userID)
+	legacyHash := GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)
+	v2CacheKey := s.openAISessionCacheKey(v2Hash)
+	if v2CacheKey == "" || accountID <= 0 {
 		return fmt.Errorf("grok video request binding is invalid")
 	}
 	// Video jobs may complete well after WS sticky TTL (default 1h). Bind at least
@@ -313,7 +335,14 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
 			ttl = sticky
 		}
 	}
-	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, accountID, ttl)
+	if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), v2CacheKey, accountID, ttl); err != nil {
+		return err
+	}
+	// 兼容升级前创建任务的查询方:旧哈希(含 apiKeyID)写副本
+	if legacyHash != "" && legacyHash != v2Hash {
+		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), s.openAISessionCacheKey(legacyHash), accountID, ttl)
+	}
+	return nil
 }
 
 func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
@@ -325,11 +354,63 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 	if s == nil || s.cache == nil {
 		return 0, fmt.Errorf("grok video request binding cache is unavailable")
 	}
-	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
-	if cacheKey == "" {
+	v2Hash := GrokMediaVideoRequestSessionHashV2(requestID, userID)
+	legacyHash := GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID)
+	v2CacheKey := s.openAISessionCacheKey(v2Hash)
+	if v2CacheKey == "" {
 		return 0, fmt.Errorf("grok video request binding is invalid")
 	}
-	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), v2CacheKey)
+	if err == nil && accountID > 0 {
+		return accountID, nil
+	}
+	// 回落旧哈希:升级前创建的任务只有 apiKeyID 维度的绑定
+	if legacyHash != "" && legacyHash != v2Hash {
+		legacyID, legacyErr := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), s.openAISessionCacheKey(legacyHash))
+		if legacyErr == nil && legacyID > 0 {
+			return legacyID, nil
+		}
+	}
+	if err != nil {
+		return 0, err
+	}
+	return 0, fmt.Errorf("grok video request binding is invalid")
+}
+
+// SelectGrokMediaVideoRequestAccount only admits the already authenticated
+// task owner. Generic sticky fallback can query another account and overwrite
+// the ownership key; video lookups must neither escape nor refresh that key.
+func (s *OpenAIGatewayService) SelectGrokMediaVideoRequestAccount(
+	ctx context.Context, groupID *int64, sessionHash string, accountID int64, requestedModel string,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.SelectMediaVideoRequestAccount(ctx, groupID, sessionHash, accountID, requestedModel, PlatformGrok)
+}
+
+func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
+	ctx context.Context, groupID *int64, sessionHash string, accountID int64, requestedModel, platform string,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Layer: openAIAccountScheduleLayerSessionSticky}
+	if accountID <= 0 || strings.TrimSpace(sessionHash) == "" {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	ctx = s.withOpenAIGroupPrivacyRequirement(WithOpenAIProfitControlSuppressed(ctx), groupID)
+	scheduler := &defaultOpenAIAccountScheduler{service: s}
+	selection, _, err := scheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
+		GroupID: groupID, Platform: platform, SessionHash: sessionHash,
+		StickyAccountID: accountID, PreserveStickyBinding: true, DisableStickyEscape: true,
+		RequestedModel: requestedModel, RequiredTransport: OpenAIUpstreamTransportHTTPSSE,
+		RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+	})
+	if err != nil {
+		return nil, decision, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	decision.StickySessionHit = true
+	decision.SelectedAccountID = selection.Account.ID
+	decision.SelectedAccountType = selection.Account.Type
+	return selection, decision, nil
 }
 
 // GrokVideoPendingBilling is the create-time snapshot used when status polling
@@ -389,6 +470,18 @@ func grokVideoPendingBillingKey(requestID string, userID, apiKeyID int64) string
 	return fmt.Sprintf("%d:%d:%s", userID, apiKeyID, requestID)
 }
 
+// grokVideoPendingBillingKeyV2 密钥无关的计费快照/claim 键。
+// 旧键掺入 apiKeyID:任务归属已升级为 V2(跨密钥轮询合法)后,换密钥轮询会
+// 读不到快照(按默认价漏计)且 claim 键不同导致可重复计费。V2 与归属绑定
+// 一致只含 userID+requestID;旧键仅作迁移期读取回退。
+func grokVideoPendingBillingKeyV2(requestID string, userID int64) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || userID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("v2:%d:%s", userID, requestID)
+}
+
 func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
 	// Video generation can take several minutes; keep create-time pricing for a day.
 	_ = cfg
@@ -410,7 +503,8 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if s == nil || s.cache == nil {
 		return fmt.Errorf("grok video pending billing cache is unavailable")
 	}
-	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	key := grokVideoPendingBillingKeyV2(requestID, userID)
+	legacyKey := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
 	if key == "" {
 		return fmt.Errorf("grok video pending billing key is invalid")
 	}
@@ -434,7 +528,14 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	if err != nil {
 		return err
 	}
-	return s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg))
+	if err := s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg)); err != nil {
+		return err
+	}
+	// 迁移期兼容:升级前的轮询方仍按旧键读取
+	if legacyKey != "" && legacyKey != key {
+		_ = s.cache.SetGrokVideoPendingBilling(ctx, legacyKey, payload, grokVideoPendingBillingTTL(s.cfg))
+	}
+	return nil
 }
 
 // LoadGrokVideoPendingBilling returns the create-time snapshot (may be nil on miss).
@@ -446,13 +547,24 @@ func (s *OpenAIGatewayService) LoadGrokVideoPendingBilling(
 	if s == nil || s.cache == nil {
 		return nil, fmt.Errorf("grok video pending billing cache is unavailable")
 	}
-	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	key := grokVideoPendingBillingKeyV2(requestID, userID)
 	if key == "" {
 		return nil, fmt.Errorf("grok video pending billing key is invalid")
 	}
 	payload, err := s.cache.GetGrokVideoPendingBilling(ctx, key)
-	if err != nil || len(payload) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	if len(payload) == 0 {
+		// 回退旧键:升级前创建的任务只有 apiKeyID 维度的快照
+		if legacyKey := grokVideoPendingBillingKey(requestID, userID, apiKeyID); legacyKey != "" && legacyKey != key {
+			payload, err = s.cache.GetGrokVideoPendingBilling(ctx, legacyKey)
+			if err != nil || len(payload) == 0 {
+				return nil, err
+			}
+		} else {
+			return nil, nil
+		}
 	}
 	var pending GrokVideoPendingBilling
 	if err := json.Unmarshal(payload, &pending); err != nil {
@@ -471,11 +583,24 @@ func (s *OpenAIGatewayService) ClaimGrokVideoBilling(
 	if s == nil || s.cache == nil {
 		return false, fmt.Errorf("grok video billing claim cache is unavailable")
 	}
-	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	key := grokVideoPendingBillingKeyV2(requestID, userID)
 	if key == "" {
 		return false, fmt.Errorf("grok video billing claim key is invalid")
 	}
-	return s.cache.ClaimGrokVideoBilled(ctx, key, grokVideoBilledClaimTTL(s.cfg))
+	claimed, err := s.cache.ClaimGrokVideoBilled(ctx, key, grokVideoBilledClaimTTL(s.cfg))
+	if err != nil || !claimed {
+		return claimed, err
+	}
+	// 迁移期防重复:升级前创建的任务可能已用旧键计过费。旧键 claim 失败
+	// 说明已计费 → 回滚 V2 claim 并视为已计。
+	if legacyKey := grokVideoPendingBillingKey(requestID, userID, apiKeyID); legacyKey != "" && legacyKey != key {
+		legacyClaimed, legacyErr := s.cache.ClaimGrokVideoBilled(ctx, legacyKey, grokVideoBilledClaimTTL(s.cfg))
+		if legacyErr == nil && !legacyClaimed {
+			_ = s.cache.ReleaseGrokVideoBilled(ctx, key)
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // ReleaseGrokVideoBilling clears a claim after a failed durable RecordUsage so a
@@ -488,9 +613,13 @@ func (s *OpenAIGatewayService) ReleaseGrokVideoBilling(
 	if s == nil || s.cache == nil {
 		return fmt.Errorf("grok video billing claim cache is unavailable")
 	}
-	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	// V2 为主;旧键一并释放,保证迁移期两侧一致
+	key := grokVideoPendingBillingKeyV2(requestID, userID)
 	if key == "" {
 		return fmt.Errorf("grok video billing claim key is invalid")
+	}
+	if legacyKey := grokVideoPendingBillingKey(requestID, userID, apiKeyID); legacyKey != "" {
+		_ = s.cache.ReleaseGrokVideoBilled(ctx, legacyKey)
 	}
 	return s.cache.ReleaseGrokVideoBilled(ctx, key)
 }
@@ -641,6 +770,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
+	body = compressGrokMediaReferenceImages(endpoint, body)
 	requestInfo := ParseGrokMediaRequest(contentType, body)
 	upstreamModel := requestInfo.Model
 	if endpoint.RequiresRequestBody() && gjson.ValidBytes(body) {
@@ -655,6 +785,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		}
 	}
 	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+	}
+	body, err = adaptGrokVideoReferenceForAccount(account, endpoint, body)
 	if err != nil {
 		return nil, err
 	}
@@ -747,6 +881,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
+		ImageEndpoint:        usage.ImageCount > 0,
 		ImageCount:           usage.ImageCount,
 		ImageSize:            usage.ImageSize,
 		ImageInputSize:       usage.ImageInputSize,
@@ -818,6 +953,14 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
 	}
+	publicContent := false
+	if contentURL == "" {
+		contentURL, err = grokMediaPublicVideoContentURL(statusBody, requestID)
+		if err != nil {
+			return nil, err
+		}
+		publicContent = contentURL != ""
+	}
 	signedContent := contentURL != ""
 	if !signedContent {
 		contentURL, err = buildGrokMediaURL(account, s.cfg, GrokMediaEndpointVideoContent, requestID)
@@ -851,9 +994,20 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		account.ApplyHeaderOverrides(contentReq.Header)
 	}
 
-	contentResp, err := s.httpUpstream.Do(contentReq, proxyURL, account.ID, account.Concurrency)
+	var contentResp *http.Response
+	if publicContent {
+		// Public relay assets must use their own guarded transport. In particular,
+		// never pass account credentials, header overrides, or the account proxy.
+		contentReq.Header.Set("User-Agent", "Go-http-client/1.1")
+		contentResp, err = grokMediaPublicVideoClient.Do(contentReq)
+	} else {
+		contentResp, err = s.httpUpstream.Do(contentReq, proxyURL, account.ID, account.Concurrency)
+	}
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		if publicContent {
+			return nil, fmt.Errorf("grok public video download failed: %s", sanitizeStreamError(err))
+		}
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = contentResp.Body.Close() }()
@@ -862,10 +1016,29 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		return nil, fmt.Errorf("grok media signed content redirect is not allowed")
 	}
 	if contentResp.StatusCode >= 400 && contentResp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		if publicContent {
+			return nil, fmt.Errorf("grok public video download returned status %d", contentResp.StatusCode)
+		}
 		return s.handleGrokMediaErrorResponse(ctx, contentResp, c, account, contentRequestID, "")
 	}
+	billingStatusBody := statusBody
+	if publicContent && contentResp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		if err := validateGrokMediaPublicVideoResponse(contentResp); err != nil {
+			return nil, err
+		}
+		// Prepare the billing snapshot before committing the response. It is used
+		// only after the successful body copy below, so a failed public download
+		// cannot turn a noncanonical status into a billable completion.
+		billingStatusBody, err = grokMediaPublicVideoBillingStatus(statusBody, contentURL)
+		if err != nil {
+			return nil, err
+		}
+		contentResp.Body = http.MaxBytesReader(nil, contentResp.Body, grokMediaPublicVideoMaxBytes)
+	}
 
-	s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, ""), account, contentResp.Header, contentResp.StatusCode)
+	if !publicContent {
+		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, ""), account, contentResp.Header, contentResp.StatusCode)
+	}
 	if err := writeGrokMediaContentResponse(c, contentResp); err != nil {
 		return nil, err
 	}
@@ -878,7 +1051,10 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		ResponseHeaders: contentResp.Header.Clone(),
 		Duration:        time.Since(startTime),
 	}
-	if billed := ExtractGrokVideoBillingFromStatusBody(statusBody, nil, requestID); billed != nil {
+	if publicContent && contentResp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		return result, nil
+	}
+	if billed := ExtractGrokVideoBillingFromStatusBody(billingStatusBody, nil, requestID); billed != nil {
 		result.ResponseID = firstNonEmpty(billed.ResponseID, strings.TrimSpace(requestID))
 		result.Model = billed.Model
 		result.BillingModel = billed.BillingModel

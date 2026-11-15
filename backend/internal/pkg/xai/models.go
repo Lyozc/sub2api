@@ -84,6 +84,7 @@ func (o ModelMappingOptions) defaultText() string {
 
 var defaultModels = []Model{
 	// Text
+	{ID: "grok-4.7", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.7"},
 	{ID: "grok-4.6", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.6"},
 	{ID: "grok-4.5", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.5"},
 	{ID: "grok-4.3", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.3"},
@@ -106,6 +107,8 @@ var defaultModels = []Model{
 var grokTextResponsesModelAliases = map[string]string{
 	"grok":                         DefaultTextModel,
 	"grok-latest":                  DefaultTextModel,
+	"grok-4.7":                     "grok-4.7",
+	"grok-4.7-latest":              "grok-4.7",
 	"grok-4.6":                     "grok-4.6",
 	"grok-4.6-latest":              "grok-4.6",
 	"grok-4.5":                     "grok-4.5",
@@ -273,6 +276,19 @@ func IsGrokImagineModel(model string) bool {
 	default:
 		return false
 	}
+}
+
+// IsGrokImagineVideoModel reports whether model is an Imagine video model or alias.
+func IsGrokImagineVideoModel(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(model))
+	return strings.HasPrefix(normalized, "grok-imagine-video") ||
+		normalized == "grok-video-1.5" ||
+		strings.HasPrefix(normalized, "imagine-video")
+}
+
+// IsGrokImagineImageModel reports whether model is an Imagine image model or alias.
+func IsGrokImagineImageModel(model string) bool {
+	return IsGrokImagineModel(model) && !IsGrokImagineVideoModel(model)
 }
 
 // IsGrokTextResponsesModelID reports whether model is a known Grok text model

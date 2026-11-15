@@ -191,12 +191,12 @@
           @select-all-results="handleSelectAllResults"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
-        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden" :aria-busy="loading" :inert="loading && accounts.length > 0">
         <DataTable
           ref="dataTableRef"
           :columns="cols"
           :data="accounts"
-          :loading="loading"
+          :loading="loading && accounts.length === 0"
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
@@ -378,8 +378,12 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+          <template #cell-priority="{ row }">
+            <AccountPriorityCell
+              :account="row"
+              @updated="handleAccountUpdated"
+              @error="(message: string) => appStore.showError(message)"
+            />
           </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
@@ -401,6 +405,27 @@
                 <span class="text-gray-300 dark:text-gray-600">/</span>
                 <span class="text-primary-700 dark:text-primary-300">{{ formatStickySchedulerScore(score) }}</span>
               </div>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+          <template #header-health="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.health.hint')" width-class="w-72" />
+            </div>
+          </template>
+          <template #cell-health="{ row }">
+            <div v-if="row.health" class="flex flex-col gap-0.5 font-mono text-[11px] leading-4">
+              <span
+                class="whitespace-nowrap"
+                :class="row.health.failed > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'"
+                :title="t('admin.accounts.health.hint')"
+              >
+                {{ formatAccountHealth(row.health) }}
+              </span>
+              <span v-if="row.health.failed > 0" class="whitespace-nowrap text-red-500 dark:text-red-400">
+                {{ t('admin.accounts.health.failedShort', { failed: row.health.failed }) }}
+              </span>
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
@@ -492,6 +517,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -520,6 +546,7 @@ import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vu
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
+import AccountPriorityCell from '@/components/account/AccountPriorityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
@@ -647,6 +674,31 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+
+// Account filter settings
+const ACCOUNT_FILTER_STORAGE_KEY = 'account-filter-values'
+type AccountFilterValues = {
+  platform: string
+  status: string
+}
+const loadInitialAccountFilterValues = (): AccountFilterValues => {
+  const fallback: AccountFilterValues = { platform: '', status: '' }
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return fallback
+    const values = parsed as Record<string, unknown>
+    return {
+      platform: typeof values.platform === 'string' && CONCRETE_PLATFORM_OPTIONS.some(option => option.value === values.platform)
+        ? values.platform : '',
+      status: typeof values.status === 'string' && ['active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable'].includes(values.status)
+        ? values.status : ''
+    }
+  } catch {
+    return fallback
+  }
+}
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -927,6 +979,17 @@ const formatStickySchedulerScore = (score: AccountSchedulerGroupScore): string =
   return formatSchedulerScore(score.sticky_score)
 }
 
+// 健康度展示: "首字 1.2s · 35 次"（首字延迟 EWMA + 窗口成功数）
+const formatAccountHealth = (health: NonNullable<Account['health']>): string => {
+  const parts: string[] = []
+  if (health.avg_first_token_ms != null && health.avg_first_token_ms > 0) {
+    const ms = health.avg_first_token_ms
+    parts.push(ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`)
+  }
+  parts.push(t('admin.accounts.health.okShort', { ok: health.ok }))
+  return parts.join(' · ')
+}
+
 const getSchedulerScoreRows = (account: Account): AccountSchedulerGroupScore[] => {
   const groupRows = Array.isArray(account.scheduler_scores)
     ? account.scheduler_scores.filter(score => score.group_id != null)
@@ -1079,9 +1142,8 @@ const {
 } = useTableLoader<AccountListItem, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: {
-    platform: '',
+    ...loadInitialAccountFilterValues(),
     type: '',
-    status: '',
     privacy_mode: '',
     group: '',
     search: '',
@@ -1287,7 +1349,19 @@ const refreshUpstreamBillingSortedList = async (force = false) => {
 
 useIntervalFn(() => { void refreshUpstreamBillingRates() }, 5 * 60_000, { immediate: false })
 
+const saveAccountFilterValues = () => {
+  try {
+    localStorage.setItem(ACCOUNT_FILTER_STORAGE_KEY, JSON.stringify({
+      platform: params.platform,
+      status: params.status
+    }))
+  } catch {
+    // Filtering must remain available when browser storage is unavailable.
+  }
+}
+
 const debouncedReload = () => {
+  saveAccountFilterValues()
   clearSelection()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
@@ -1798,6 +1872,7 @@ const allColumns = computed(() => {
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
+    { key: 'health', label: t('admin.accounts.columns.health'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
@@ -2352,9 +2427,10 @@ const handleDuplicateAccount = async (a: Account) => {
 }
 const handleRefresh = async (a: Account) => {
   try {
-    const updated = await adminAPI.accounts.refreshCredentials(a.id)
-    patchAccountInList(updated)
+    const result = await adminAPI.accounts.refreshCredentials(a.id)
+    patchAccountInList(result.account)
     enterAutoRefreshSilentWindow()
+    if (result.warning) appStore.showWarning(result.message)
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
   }

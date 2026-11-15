@@ -7,7 +7,7 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:24-alpine
-ARG GOLANG_IMAGE=golang:1.27.0-alpine
+ARG GOLANG_IMAGE=golang:1.27.2-alpine
 ARG ALPINE_IMAGE=alpine:3.20
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
@@ -35,6 +35,7 @@ RUN pnpm install --frozen-lockfile
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
+COPY backend/internal/service/video_capabilities.json /app/backend/internal/service/video_capabilities.json
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
@@ -94,6 +95,8 @@ RUN apk add --no-cache \
     tzdata \
     curl \
     su-exec \
+    ffmpeg \
+    font-wqy-zenhei \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user

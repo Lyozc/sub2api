@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultAllowImageGenerationForPlatform,
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
   getImagePricePlaceholder,
@@ -15,16 +16,27 @@ import {
 describe("groups image pricing platform support", () => {
   it("includes Grok image groups", () => {
     expect(supportsImagePricingPlatform("grok")).toBe(true);
+  expect(supportsImagePricingPlatform("kling")).toBe(true);
     expect(imagePricingPlatforms.has("grok")).toBe(true);
   });
 
-  it("enables video pricing controls for Grok only", () => {
+  it("enables video pricing controls for Grok and Kling", () => {
     expect(supportsVideoPricingPlatform("grok")).toBe(true);
+    expect(supportsVideoPricingPlatform("kling")).toBe(true);
     expect(supportsVideoPricingPlatform("openai")).toBe(false);
   });
 
   it("keeps non-media group platforms out of the image pricing controls", () => {
     expect(supportsImagePricingPlatform("anthropic")).toBe(false);
+  });
+
+  it("defaults image generation on for Grok and Gemini-family groups only", () => {
+    expect(defaultAllowImageGenerationForPlatform("grok")).toBe(true);
+    expect(defaultAllowImageGenerationForPlatform("kling")).toBe(true);
+    expect(defaultAllowImageGenerationForPlatform("gemini")).toBe(true);
+    expect(defaultAllowImageGenerationForPlatform("antigravity")).toBe(true);
+    expect(defaultAllowImageGenerationForPlatform("composite")).toBe(false);
+    expect(defaultAllowImageGenerationForPlatform("openai")).toBe(false);
   });
 
   it("includes Composite groups in image pricing controls", () => {

@@ -78,6 +78,13 @@ apiClient.interceptors.request.use(
 
 // ==================== Response Interceptor ====================
 
+// Retry-After 只接受整数秒；跨域部署未暴露该头或为 HTTP-date 形式时返回 undefined。
+const parseRetryAfterSeconds = (headers: unknown): number | undefined => {
+  const raw = (headers as Record<string, unknown> | undefined)?.['retry-after']
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim())) return undefined
+  return Number(raw.trim())
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Unwrap standard API response format { code, message, data }
@@ -186,7 +193,7 @@ apiClient.interceptors.response.use(
               originalRequest.headers.Authorization = `Bearer ${tokens.access_token}`
             }
             return apiClient(originalRequest)
-          } catch {
+          } catch (refreshError) {
             // A stale request must never destroy a session that was logged out or replaced while
             // its refresh was in flight (for example, when another tab signs in as another user).
             const sessionChanged =
@@ -200,6 +207,17 @@ apiClient.interceptors.response.use(
               })
             }
 
+            if (axios.isAxiosError(refreshError)) {
+              const refreshStatus = refreshError.response?.status ?? 0
+              if (refreshStatus === 0 || refreshStatus === 429 || refreshStatus >= 500) {
+                return Promise.reject({
+                  status: refreshStatus,
+                  code: 'TOKEN_REFRESH_UNAVAILABLE',
+                  message: refreshError.response?.data?.message || refreshError.message
+                })
+              }
+            }
+
             // Clear tokens and redirect to login
             localStorage.removeItem('auth_token')
             localStorage.removeItem('refresh_token')
@@ -207,8 +225,10 @@ apiClient.interceptors.response.use(
             localStorage.removeItem('token_expires_at')
             sessionStorage.setItem('auth_expired', '1')
 
-            if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login'
+            const onAuthPage = window.location.pathname.includes('/login') || window.location.pathname === '/home'
+            if (!onAuthPage) {
+              // 会话过期回到视频主页(主页内嵌登录表单)
+              window.location.href = '/home'
             }
 
             return Promise.reject({
@@ -237,9 +257,10 @@ apiClient.interceptors.response.use(
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         }
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
+        // Only redirect if not already on an auth surface (login page or video home)
+        const onAuthSurface = window.location.pathname.includes('/login') || window.location.pathname === '/home'
+        if (!onAuthSurface) {
+          window.location.href = '/home'
         }
       }
 
@@ -251,12 +272,14 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+        retry_after_seconds: parseRetryAfterSeconds(error.response.headers),
       })
     }
 
     // Network error
     return Promise.reject({
       status: 0,
+      code: error.code || 'ERR_NETWORK',
       message: 'Network error. Please check your connection.'
     })
   }

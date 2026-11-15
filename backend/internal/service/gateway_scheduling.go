@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	mathrand "math/rand"
 	"sort"
 	"strings"
@@ -819,6 +820,87 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	return nil, false, nil
 }
 
+// RecordAccountSuccess 记录一次账号成功请求（含可选首字延迟），用于健康度监控。
+func (s *GatewayService) RecordAccountSuccess(ctx context.Context, accountID int64, firstTokenMs *int) {
+	if s == nil || s.accountHealth == nil {
+		return
+	}
+	s.accountHealth.RecordSuccess(ctx, accountID, firstTokenMs)
+}
+
+// RecordAccountFailure 记录一次账号级失败（failover 切换账号），用于健康度监控。
+func (s *GatewayService) RecordAccountFailure(ctx context.Context, accountID int64) {
+	if s == nil || s.accountHealth == nil {
+		return
+	}
+	s.accountHealth.RecordFailure(ctx, accountID)
+}
+
+// GetAccountsHealthSnapshot 批量读取账号健康度快照（带超时保护，绝不阻塞调度热路径）。
+func (s *GatewayService) GetAccountsHealthSnapshot(ctx context.Context, accountIDs []int64) map[int64]AccountHealthSnapshot {
+	if s == nil || s.accountHealth == nil {
+		return nil
+	}
+	return s.accountHealth.SnapshotWithTimeout(ctx, accountIDs)
+}
+
+// healthSnapshotsForAccounts 供调度循环使用：健康排序关闭或无后端时返回空表（退回 LRU 语义）。
+func (s *GatewayService) healthSnapshotsForAccounts(ctx context.Context, accounts []Account) map[int64]AccountHealthSnapshot {
+	if s == nil || s.accountHealth == nil || !s.schedulingConfig().HealthSortEnabled || len(accounts) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(accounts))
+	for i := range accounts {
+		ids = append(ids, accounts[i].ID)
+	}
+	return s.accountHealth.SnapshotWithTimeout(ctx, ids)
+}
+
+// compareAccountHealth 比较两个账号的健康度，返回 -1 表示 a 优于 b。
+// 排序键：失败桶（0=有样本且无失败 1=无数据 2=有失败）→ 首字 EWMA 升序。
+// 双方无数据或键完全相同时返回 0，由调用方退回 LRU 比较。
+func compareAccountHealth(a, b AccountHealthSnapshot) int {
+	bucket := func(s AccountHealthSnapshot) int {
+		switch {
+		case s.Failed > 0:
+			return 2
+		case s.OK > 0:
+			return 0
+		default:
+			return 1
+		}
+	}
+	ba, bb := bucket(a), bucket(b)
+	if ba != bb {
+		if ba < bb {
+			return -1
+		}
+		return 1
+	}
+	ftKey := func(s AccountHealthSnapshot) (float64, bool) {
+		if s.AvgFirstTokenMs != nil && *s.AvgFirstTokenMs > 0 {
+			return float64(*s.AvgFirstTokenMs), true
+		}
+		return 0, false
+	}
+	fa, aOK := ftKey(a)
+	fb, bOK := ftKey(b)
+	switch {
+	case aOK && !bOK:
+		return -1
+	case !aOK && bOK:
+		return 1
+	case aOK && bOK:
+		if fa < fb {
+			return -1
+		}
+		if fa > fb {
+			return 1
+		}
+	}
+	return 0
+}
+
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s.cfg != nil {
 		return s.cfg.Gateway.Scheduling
@@ -830,6 +912,7 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		FallbackMaxWaiting:       100,
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
+		HealthSortEnabled:        true,
 	}
 }
 
@@ -1122,10 +1205,22 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	return accounts, useMixed, nil
 }
 
-// IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
-// 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
-// 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
-func (s *GatewayService) IsSingleAntigravityAccountGroup(ctx context.Context, groupID *int64) bool {
+// WithSingleAntigravityAccountGroupProbe 为请求挂载「分组是否只有一个 antigravity 可调度账号」的延迟判定。
+// 只有 antigravity 账号遇到 503 或模型限流预检查时才会查询；其他平台的请求不读取该判定。
+func (s *GatewayService) WithSingleAntigravityAccountGroupProbe(ctx context.Context, groupID *int64) context.Context {
+	var probeGroupID *int64
+	if groupID != nil {
+		id := *groupID
+		probeGroupID = &id
+	}
+	return WithSingleAccountRetryProbe(ctx, func(probeCtx context.Context) bool {
+		return s.isSingleAntigravityAccountGroup(probeCtx, probeGroupID)
+	})
+}
+
+// isSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
+// 单账号分组收到 503 时原地重试而不设置模型限流，避免后续请求连续快速失败。
+func (s *GatewayService) isSingleAntigravityAccountGroup(ctx context.Context, groupID *int64) bool {
 	accounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformAntigravity, true)
 	if err != nil {
 		return false
@@ -1309,9 +1404,9 @@ func (s *GatewayService) withWindowCostPrefetch(ctx context.Context, accounts []
 }
 
 // isAccountSchedulableForQuota 检查账号是否在配额限制内
-// 适用于配置了 quota_limit 的 apikey 和 bedrock 类型账号
+// 适用于配置了 quota_limit 的 apikey、bedrock 和 service_account 类型账号
 func (s *GatewayService) isAccountSchedulableForQuota(account *Account) bool {
-	if !account.IsAPIKeyOrBedrock() {
+	if !account.SupportsAccountQuota() {
 		return true
 	}
 	return !account.IsQuotaExceeded()
@@ -1575,6 +1670,11 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
+		// release 只在成功结果里返回给调用方；hydrate 失败时这里不释放的话，
+		// 已从 Redis 占用的槽位会一直泄漏到 TTL 到期。
+		if release != nil {
+			release()
+		}
 		return nil, err
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
@@ -1849,6 +1949,96 @@ func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOA
 		// 默认按最后使用时间排序
 		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
 	}
+	// 健康度偏好：同优先级内把"近期无失败 + 首字快"的账号排到前面
+	if s.schedulingConfig().HealthSortEnabled {
+		s.applyHealthOrderingWithinPriority(accounts)
+	}
+}
+
+// accountHealthSortState 是同优先级段内健康度排序的排序键。
+type accountHealthSortState struct {
+	account  *Account
+	snapshot AccountHealthSnapshot
+	hasData  bool
+	// failBucket: 0=有样本且无失败(健康) 1=无数据(保持原序) 2=有失败
+	failBucket int
+	// ftKey: 首字延迟 EWMA；无样本时排到有样本之后
+	ftKey float64
+	ftSet bool
+}
+
+// applyHealthOrderingWithinPriority 在不破坏优先级分段的前提下，
+// 对每个同优先级段内按健康度重排：
+//  1. 无失败的账号在前，有失败在后，无数据的保持原相对顺序居中；
+//  2. 同一失败状态下按首字延迟 EWMA 升序（无流式样本的排在有样本之后，保持原序）。
+//
+// 稳定排序保证无数据账号保留原有 last_used/随机 语义。
+func (s *GatewayService) applyHealthOrderingWithinPriority(accounts []*Account) {
+	if s == nil || s.accountHealth == nil || len(accounts) < 2 {
+		return
+	}
+	ids := make([]int64, 0, len(accounts))
+	for _, acc := range accounts {
+		ids = append(ids, acc.ID)
+	}
+	snapshots := s.accountHealth.SnapshotWithTimeout(context.Background(), ids)
+	if len(snapshots) == 0 {
+		return
+	}
+
+	states := make([]accountHealthSortState, len(accounts))
+	for i, acc := range accounts {
+		state := accountHealthSortState{account: acc}
+		if snapshot, ok := snapshots[acc.ID]; ok {
+			state.snapshot = snapshot
+			state.hasData = true
+			switch {
+			case snapshot.Failed > 0:
+				state.failBucket = 2
+			case snapshot.OK > 0:
+				state.failBucket = 0
+			default:
+				state.failBucket = 1
+			}
+			if snapshot.AvgFirstTokenMs != nil {
+				state.ftKey = float64(*snapshot.AvgFirstTokenMs)
+				state.ftSet = true
+			} else {
+				state.ftKey = math.MaxFloat64 / 2
+			}
+		} else {
+			state.failBucket = 1
+			state.ftKey = math.MaxFloat64 / 2
+		}
+		states[i] = state
+	}
+
+	start := 0
+	for start < len(accounts) {
+		priority := accounts[start].Priority
+		end := start + 1
+		for end < len(accounts) && accounts[end].Priority == priority {
+			end++
+		}
+		segment := states[start:end]
+		sort.SliceStable(segment, func(i, j int) bool {
+			a, b := segment[i], segment[j]
+			if a.failBucket != b.failBucket {
+				return a.failBucket < b.failBucket
+			}
+			if a.ftSet != b.ftSet {
+				return a.ftSet
+			}
+			if a.ftSet && a.ftKey != b.ftKey {
+				return a.ftKey < b.ftKey
+			}
+			return false
+		})
+		for offset := range segment {
+			accounts[start+offset] = segment[offset].account
+		}
+		start = end
+	}
 }
 
 // sortAccountsByPriorityOnly 仅按优先级排序
@@ -1893,10 +2083,10 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
-	// require_privacy_set: 获取分组信息
+	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
 	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+		schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
 	}
 
 	var accounts []Account
@@ -2159,10 +2349,10 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	preferOAuth := nativePlatform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
 
-	// require_privacy_set: 获取分组信息
+	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，旧选号路径不能用它。
 	var schedGroup *Group
 	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+		schedGroup, _ = s.groupRepo.GetByIDLite(ctx, *groupID)
 	}
 
 	var accounts []Account
@@ -2336,7 +2526,11 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
 	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查。
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	// 健康度快照：同优先级内先比健康（无失败优先、首字 EWMA 升序），再退回 LRU。
+	// 快照带 50ms 超时，Redis 抖动时返回空表，比较退化为原有 LRU 行为。
+	healthSnapshots := s.healthSnapshotsForAccounts(ctx, accounts)
 	var selected *Account
+	var selectedHealth *AccountHealthSnapshot
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
@@ -2378,25 +2572,39 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 		}
+		accHealth := healthSnapshots[acc.ID]
 		if selected == nil {
 			selected = acc
+			selectedHealth = &accHealth
 			continue
 		}
 		if acc.Priority < selected.Priority {
 			selected = acc
+			selectedHealth = &accHealth
 		} else if acc.Priority == selected.Priority {
+			// 同优先级：先比健康度（无失败 > 无数据 > 有失败；同桶按首字 EWMA 升序）
+			if cmp := compareAccountHealth(accHealth, *selectedHealth); cmp < 0 {
+				selected = acc
+				selectedHealth = &accHealth
+				continue
+			} else if cmp > 0 {
+				continue
+			}
 			switch {
 			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
+				selectedHealth = &accHealth
 			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
 				// keep selected (never used is preferred)
 			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
 				if preferOAuth && acc.Platform == PlatformGemini && selected.Platform == PlatformGemini && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
 					selected = acc
+					selectedHealth = &accHealth
 				}
 			default:
 				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
 					selected = acc
+					selectedHealth = &accHealth
 				}
 			}
 		}

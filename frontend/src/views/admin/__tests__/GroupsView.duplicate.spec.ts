@@ -71,7 +71,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({ t: (key: string) => key })
+    useI18n: () => ({ t: (key: string, values?: Record<string, unknown>) => key === 'admin.groups.videoPricing.afterMultiplier' ? `${key}: ${values?.price}` : key })
   }
 })
 
@@ -322,6 +322,84 @@ describe('GroupsView duplicate action', () => {
 
     expect(updateGroup).toHaveBeenCalledTimes(1)
     expect(showError).toHaveBeenCalledWith('group name already exists')
+    wrapper.unmount()
+  })
+
+  it('loads and saves Kling model pricing, free cells, multipliers and clearing without losing custom models', async () => {
+    const group = { ...sourceGroup, platform:'kling', video_rate_independent:true, video_rate_multiplier:1.5, video_price_720p:0.02, video_model_prices:{'kling-4.0':{'720p':0.1},'custom-kling':{'4k':0.7}} }
+    listGroups.mockResolvedValue({items:[group],total:1,page:1,page_size:20,pages:1})
+    updateGroup.mockResolvedValue(group)
+    const wrapper=mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button=>button.text()==='common.edit')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[data-testid="edit-kling-video-price-kling-v4-720p"]').element.value).toBe('0.1')
+    expect(wrapper.get('[data-testid="edit-kling-video-price-kling-v4-flash-1080p"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="edit-kling-video-price-kling-v4-720p"]').setValue('0.123456')
+    await wrapper.get('[data-testid="edit-kling-video-price-kling-v4-flash-720p"]').setValue('0')
+    await wrapper.get('[data-testid="edit-kling-video-price-kling-v3-omni-4k"]').setValue('0.5')
+    expect(wrapper.get('[data-testid="edit-kling-video-model-prices"]').text()).toContain('$0.185184')
+    await wrapper.get('#edit-group-form').trigger('submit'); await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42,expect.objectContaining({video_rate_independent:true,video_rate_multiplier:1.5,video_model_prices:{'kling-v4':{'720p':0.123456},'kling-v4-flash':{'720p':0},'kling-v3-omni':{'4k':0.5},'custom-kling':{'4k':0.7}}}))
+    wrapper.unmount()
+  })
+
+  it('loads, edits, and saves custom reasoning multipliers for group pricing', async () => {
+    const group = {
+      ...sourceGroup,
+      model_pricing: [{
+        platform: 'openai', models: ['example-model'], billing_mode: 'token',
+        input_price: 3e-6, output_price: 15e-6, cache_write_price: null, cache_read_price: null,
+        image_input_price: null, image_output_price: null, per_request_price: null,
+        reasoning_effort_multipliers: { high: 1.5, max: 3 }, intervals: [], time_pricing: null,
+      }],
+    }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get<HTMLInputElement>('[data-reasoning-effort="high"]').element.value).toBe('1.5')
+    await wrapper.get('[data-reasoning-effort="high"]').setValue('0.5')
+    await wrapper.get('[data-reasoning-effort="max"]').setValue('')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      model_pricing: [expect.objectContaining({ reasoning_effort_multipliers: { high: 0.5 } })],
+    }))
+    wrapper.unmount()
+  })
+
+  it('blocks saving an invalid group reasoning multiplier and allows clearing it', async () => {
+    const group = {
+      ...sourceGroup,
+      model_pricing: [{
+        platform: 'openai', models: ['example-model'], billing_mode: 'token',
+        input_price: 3e-6, output_price: 15e-6, cache_write_price: null, cache_read_price: null,
+        image_input_price: null, image_output_price: null, per_request_price: null,
+        reasoning_effort_multipliers: { high: 1.5 }, intervals: [], time_pricing: null,
+      }],
+    }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-reasoning-effort="high"]').setValue('0')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith(expect.stringContaining('reasoningEffortMultiplierPositive'))
+
+    await wrapper.get('[data-testid="reasoning-effort-multipliers"] button').trigger('click')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      model_pricing: [expect.objectContaining({ reasoning_effort_multipliers: null })],
+    }))
     wrapper.unmount()
   })
 

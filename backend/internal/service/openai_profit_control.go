@@ -13,7 +13,8 @@ package service
 //     最终扣费共用同一 D（RecordUsage 的高峰因子同样取 pricingAt），一个请求
 //     不会中途变价。D 与计费完全同源：按请求真实计费分组（ctxkey.Group，即
 //     apiKey 自身分组；composite 请求为父分组）做 ResolveUserGroupRateMultiplier
-//     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(pricingAt)，绝不在
+//     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(pricingAt)×
+//     四类 Token 倍率的最小值，绝不在
 //     用户有覆盖时退回分组默认；开关与 margin/buffer 则始终取被调度
 //     openai/grok 分组。
 //   - U（上游成本倍率）取 accounts.rate_multiplier。倍率可以由运营者手工维护，
@@ -137,6 +138,18 @@ func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Conte
 	return s.withOpenAIProfitControlGate(ctx, groupID), pricingAt
 }
 
+// RebindOpenAIRequestPricingGroup installs the current group's profit gate and
+// preserves the pricing instant frozen at the beginning of the request.
+func (s *OpenAIGatewayService) RebindOpenAIRequestPricingGroup(ctx context.Context, groupID *int64) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := openAIPricingAtFromContext(ctx); !ok {
+		ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, timezone.Now())
+	}
+	return s.withOpenAIProfitControlGate(ctx, groupID)
+}
+
 // WithOpenAIProfitControlSuppressed 标记本请求在利润门范围之外（独立图片/视频
 // 端点、Grok 媒体、count_tokens、live）。所有装门点（含 service 层防御性装门）
 // 都尊重该标记；它只关闭利润准入过滤，不影响定价上下文与计费。
@@ -257,7 +270,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
 		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
-	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	downstream *= billingGroup.PeakMultiplierAt(pricingAt) * billingGroup.ConservativeTokenRevenueMultiplier()
 
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
 	threshold := clampProfitControlThreshold(downstream * (1 - deduction))

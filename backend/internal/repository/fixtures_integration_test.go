@@ -96,7 +96,16 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 		SetCodexModelsManifestConfig(g.CodexModelsManifestConfig).
 		SetProfitControlEnabled(g.ProfitControlEnabled).
 		SetProfitMinMargin(g.ProfitMinMargin).
-		SetProfitSafetyBuffer(g.ProfitSafetyBuffer)
+		SetProfitSafetyBuffer(g.ProfitSafetyBuffer).
+		SetRequirePrivacySet(g.RequirePrivacySet)
+	if g.TokenMultipliersConfigured {
+		create.
+			SetInputTokenMultiplier(g.InputTokenMultiplier).
+			SetOutputTokenMultiplier(g.OutputTokenMultiplier).
+			SetCacheCreationTokenMultiplier(g.CacheCreationTokenMultiplier).
+			SetCacheReadTokenMultiplier(g.CacheReadTokenMultiplier).
+			SetReturnBillableUsage(g.ReturnBillableUsage)
+	}
 	if g.Description != "" {
 		create.SetDescription(g.Description)
 	}

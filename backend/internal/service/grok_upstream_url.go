@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -123,6 +124,20 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 	case GrokMediaEndpointImagesEdits:
 		return xai.BuildImagesEditsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideosGenerations:
+		// 兼容第三方 OneAPI 类中转:部分上游的视频创建端点是 /v1/videos 而非
+		// xAI 的 /v1/videos/generations。账号 credentials 里配置
+		// video_create_path(如 "/v1/videos")可覆盖创建路径,host 仍走统一
+		// URL 安全校验;未配置时保持 xAI 原生路径不变。
+		if override := strings.TrimSpace(account.GetCredential("video_create_path")); override != "" {
+			if cleaned := path.Clean("/" + strings.TrimPrefix(override, "/")); cleaned != "/" && !strings.Contains(cleaned[1:], "..") {
+				if parsed, perr := url.Parse(baseURL); perr == nil && parsed.Scheme != "" && parsed.Host != "" {
+					origin := parsed.Scheme + "://" + parsed.Host
+					if _, valErr := validator(origin); valErr == nil {
+						return origin + cleaned, nil
+					}
+				}
+			}
+		}
 		return xai.BuildVideosGenerationsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideosEdits:
 		return xai.BuildVideosEditsURLWithValidator(baseURL, validator)

@@ -91,13 +91,22 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID                           int64   `json:"id"`
+	Name                         string  `json:"name"`
+	Description                  string  `json:"description"`
+	Platform                     string  `json:"platform"`
+	RateMultiplier               float64 `json:"rate_multiplier"`
+	InputTokenMultiplier         float64 `json:"input_token_multiplier"`
+	OutputTokenMultiplier        float64 `json:"output_token_multiplier"`
+	CacheCreationTokenMultiplier float64 `json:"cache_creation_token_multiplier"`
+	CacheReadTokenMultiplier     float64 `json:"cache_read_token_multiplier"`
+	ReturnBillableUsage          bool    `json:"return_billable_usage"`
+	IsExclusive                  bool    `json:"is_exclusive"`
+	Status                       string  `json:"status"`
+
+	// I18n 名称与描述的各语言译文。只有管理端输出；用户侧接口经 Localized 把
+	// name/description 换成请求语言的版本后清空本字段。
+	I18n domain.GroupI18n `json:"i18n,omitempty"`
 
 	SubscriptionType          string   `json:"subscription_type"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
@@ -108,6 +117,7 @@ type Group struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
 	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageCountBilling            bool    `json:"image_count_billing"`
 	ImageRateIndependent         bool    `json:"image_rate_independent"`
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
@@ -216,6 +226,7 @@ type Account struct {
 	CredentialsStatus       map[string]bool                `json:"credentials_status,omitempty"`
 	Extra                   map[string]any                 `json:"extra"`
 	OllamaCloudUsage        *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
+	OpenCodeGoUsage         *service.OpenCodeGoUsageState  `json:"opencode_go_usage,omitempty"`
 	ProxyID                 *int64                         `json:"proxy_id"`
 	ProxyFallbackOriginID   *int64                         `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string                        `json:"proxy_fallback_origin_name,omitempty"`
@@ -322,6 +333,9 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+
+	// 仅账号详情填充。列表和公共 mapper 不计算，避免把目录诊断扩散到调度响应。
+	GrokModelDiagnostics *service.GrokModelDiagnostics `json:"grok_model_diagnostics,omitempty"`
 }
 
 // AccountListItem is the compact representation returned by the admin account
@@ -340,6 +354,7 @@ type AccountListItem struct {
 	CredentialsStatus map[string]bool                `json:"credentials_status,omitempty"`
 	Extra             map[string]any                 `json:"extra,omitempty"`
 	OllamaCloudUsage  *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
+	OpenCodeGoUsage   *service.OpenCodeGoUsageState  `json:"opencode_go_usage,omitempty"`
 
 	ProxyID                 *int64     `json:"proxy_id"`
 	ProxyFallbackOriginID   *int64     `json:"proxy_fallback_origin_id"`
@@ -610,8 +625,10 @@ type UsageLog struct {
 	CacheCreationTokens int `json:"cache_creation_tokens"`
 	CacheReadTokens     int `json:"cache_read_tokens"`
 
-	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
-	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
+	CacheCreation5mTokens  int `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens  int `json:"cache_creation_1h_tokens"`
+	CacheCreation30mTokens int `json:"cache_creation_30m_tokens"`
+	CacheCreation12hTokens int `json:"cache_creation_12h_tokens"`
 
 	InputCost                 float64 `json:"input_cost"`
 	OutputCost                float64 `json:"output_cost"`
@@ -670,6 +687,19 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+
+	// Raw token counts and multiplier snapshots are admin-only billing audit fields.
+	RawInputTokens         int `json:"raw_input_tokens"`
+	RawOutputTokens        int `json:"raw_output_tokens"`
+	RawCacheCreationTokens int `json:"raw_cache_creation_tokens"`
+	RawCacheReadTokens     int `json:"raw_cache_read_tokens"`
+	RawImageInputTokens    int `json:"raw_image_input_tokens"`
+	RawImageOutputTokens   int `json:"raw_image_output_tokens"`
+
+	InputTokenMultiplier         *float64 `json:"input_token_multiplier,omitempty"`
+	OutputTokenMultiplier        *float64 `json:"output_token_multiplier,omitempty"`
+	CacheCreationTokenMultiplier *float64 `json:"cache_creation_token_multiplier,omitempty"`
+	CacheReadTokenMultiplier     *float64 `json:"cache_read_token_multiplier,omitempty"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

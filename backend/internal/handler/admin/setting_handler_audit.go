@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -491,6 +492,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexVersionAutoSyncEnabled != after.OpenAICodexVersionAutoSyncEnabled {
 		changed = append(changed, "openai_codex_version_auto_sync_enabled")
 	}
+	if before.ClaudeCodeClientVersion != after.ClaudeCodeClientVersion {
+		changed = append(changed, "claude_code_client_version")
+	}
+	if before.ClaudeCodeVersionAutoSyncEnabled != after.ClaudeCodeVersionAutoSyncEnabled {
+		changed = append(changed, "claude_code_version_auto_sync_enabled")
+	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 	}
@@ -506,7 +513,7 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAILowUpstreamRatePriorityEnabled != after.OpenAILowUpstreamRatePriorityEnabled {
 		changed = append(changed, "openai_low_upstream_rate_priority_enabled")
 	}
-	if before.OpenAIOAuthSchedulingRateMultiplier != after.OpenAIOAuthSchedulingRateMultiplier {
+	if !equalNullableFloat(before.OpenAIOAuthSchedulingRateMultiplier, after.OpenAIOAuthSchedulingRateMultiplier) {
 		changed = append(changed, "openai_oauth_scheduling_rate_multiplier")
 	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
@@ -517,6 +524,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled != after.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled {
 		changed = append(changed, "openai_advanced_scheduler_subscription_priority_enabled")
+	}
+	if before.OpenAISessionStickyEnabled != after.OpenAISessionStickyEnabled {
+		changed = append(changed, "openai_session_sticky_enabled")
+	}
+	if before.OpenAIPreviousResponseStickyEnabled != after.OpenAIPreviousResponseStickyEnabled {
+		changed = append(changed, "openai_previous_response_sticky_enabled")
+	}
+	if before.OpenAIStrictPriorityEnabled != after.OpenAIStrictPriorityEnabled {
+		changed = append(changed, "openai_strict_priority_enabled")
 	}
 	if before.OpenAIAdvancedSchedulerLBTopK != after.OpenAIAdvancedSchedulerLBTopK {
 		changed = append(changed, "openai_advanced_scheduler_lb_top_k")
@@ -579,6 +595,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
+	if before.SubscriptionEnabled != after.SubscriptionEnabled {
+		changed = append(changed, "subscription_enabled")
+	}
 	if before.ModelPlazaEnabled != after.ModelPlazaEnabled {
 		changed = append(changed, "model_plaza_enabled")
 	}
@@ -594,6 +613,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
 	}
+	if before.CyberPolicyUserAllowlist != after.CyberPolicyUserAllowlist {
+		changed = append(changed, "cyber_policy_user_allowlist")
+	}
 	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
 		changed = append(changed, "cyber_session_block_enabled")
 	}
@@ -607,8 +629,30 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalAccountSchedulingThresholds(before.AccountSchedulingThresholds, after.AccountSchedulingThresholds) {
 		changed = append(changed, service.SettingKeyAccountSchedulingThresholds)
 	}
+	if !equalOpenAIAPIKeyHealthBreakerSettings(before.OpenAIAPIKeyHealthBreakerSettings, after.OpenAIAPIKeyHealthBreakerSettings) {
+		changed = append(changed, service.SettingKeyOpenAIAPIKeyHealthBreakerSettings)
+	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
+}
+
+// equalOpenAIAPIKeyHealthBreakerSettings 以序列化结果比较熔断配置；nil 视为内置默认值。
+func equalOpenAIAPIKeyHealthBreakerSettings(before, after *service.OpenAIAPIKeyHealthBreakerSettings) bool {
+	if before == nil && after == nil {
+		return true
+	}
+	normalize := func(s *service.OpenAIAPIKeyHealthBreakerSettings) *service.OpenAIAPIKeyHealthBreakerSettings {
+		if s != nil {
+			return s
+		}
+		return service.DefaultOpenAIAPIKeyHealthBreakerSettings()
+	}
+	beforeJSON, beforeErr := json.Marshal(normalize(before))
+	afterJSON, afterErr := json.Marshal(normalize(after))
+	if beforeErr != nil || afterErr != nil {
+		return beforeErr == afterErr
+	}
+	return string(beforeJSON) == string(afterJSON)
 }
 
 func appendAuthSourceDefaultChanges(changed []string, before *service.AuthSourceDefaultSettings, after *service.AuthSourceDefaultSettings) []string {

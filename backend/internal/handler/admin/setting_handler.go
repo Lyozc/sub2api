@@ -265,6 +265,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultBalance:                                         settings.DefaultBalance,
 		RiskControlEnabled:                                     settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                               settings.CyberSessionBlockEnabled,
+		CyberPolicyUserAllowlist:                               settings.CyberPolicyUserAllowlist,
 		CyberSessionBlockTTLSeconds:                            settings.CyberSessionBlockTTLSeconds,
 		AffiliateRebateRate:                                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:                             settings.AffiliateRebateFreezeHours,
@@ -303,6 +304,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
+		ClaudeCodeClientVersion:                                settings.ClaudeCodeClientVersion,
+		ClaudeCodeClientVersionSynced:                          settings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled:                       settings.ClaudeCodeVersionAutoSyncEnabled,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,
@@ -319,6 +323,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEnabled:                         settings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
+		OpenAISessionStickyEnabled:                             settings.OpenAISessionStickyEnabled,
+		OpenAIPreviousResponseStickyEnabled:                    settings.OpenAIPreviousResponseStickyEnabled,
+		OpenAIStrictPriorityEnabled:                            settings.OpenAIStrictPriorityEnabled,
 		OpenAIAdvancedSchedulerLBTopK:                          settings.OpenAIAdvancedSchedulerLBTopK,
 		OpenAIAdvancedSchedulerWeightPriority:                  settings.OpenAIAdvancedSchedulerWeightPriority,
 		OpenAIAdvancedSchedulerWeightLoad:                      settings.OpenAIAdvancedSchedulerWeightLoad,
@@ -358,6 +365,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentBalanceRechargeMultiplier:                       paymentCfg.BalanceRechargeMultiplier,
 		PaymentSubscriptionUSDToCNYRate:                        paymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                                 paymentCfg.RechargeFeeRate,
+		PaymentRechargeBonusTiers:                              rechargeBonusTiersToDTO(paymentCfg.RechargeBonusTiers),
+		PaymentRechargeBonusMode:                               rechargeBonusModeToDTO(paymentCfg.RechargeBonusMode),
+		PaymentRechargeBonusNotice:                             paymentCfg.RechargeBonusNotice,
 		PaymentLoadBalanceStrat:                                paymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               paymentCfg.ProductNamePrefix,
 		PaymentProductNameSuffix:                               paymentCfg.ProductNameSuffix,
@@ -376,12 +386,14 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
 		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
@@ -390,8 +402,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
+		AccountSchedulingThresholds:       settings.AccountSchedulingThresholds,
+		OpenAIAPIKeyHealthBreakerSettings: settings.OpenAIAPIKeyHealthBreakerSettings,
+		AllowUserViewErrorRequests:        settings.AllowUserViewErrorRequests,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

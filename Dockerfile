@@ -8,7 +8,7 @@
 # =============================================================================
 
 ARG NODE_IMAGE=node:24-alpine
-ARG GOLANG_IMAGE=golang:1.27.0-alpine
+ARG GOLANG_IMAGE=golang:1.27.3-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
@@ -41,6 +41,7 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
+COPY backend/internal/service/video_capabilities.json /app/backend/internal/service/video_capabilities.json
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
@@ -120,6 +121,8 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     su-exec \
+    ffmpeg \
+    font-wqy-zenhei \
     libpq \
     zstd-libs \
     lz4-libs \

@@ -257,6 +257,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
+	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -278,6 +280,9 @@ type UpdateSettingsRequest struct {
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAISessionStickyEnabled                         *bool    `json:"openai_session_sticky_enabled"`
+	OpenAIPreviousResponseStickyEnabled                *bool    `json:"openai_previous_response_sticky_enabled"`
+	OpenAIStrictPriorityEnabled                        *bool    `json:"openai_strict_priority_enabled"`
 	OpenAIAdvancedSchedulerLBTopK                      *string  `json:"openai_advanced_scheduler_lb_top_k"`
 	OpenAIAdvancedSchedulerWeightPriority              *string  `json:"openai_advanced_scheduler_weight_priority"`
 	OpenAIAdvancedSchedulerWeightLoad                  *string  `json:"openai_advanced_scheduler_weight_load"`
@@ -310,11 +315,15 @@ type UpdateSettingsRequest struct {
 	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
 	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
-	PaymentHelpText                  *string  `json:"payment_help_text"`
+	// nil 表示不更新；空数组表示清空阶梯
+	PaymentRechargeBonusTiers  *[]dto.RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode   *string                  `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice *string                  `json:"payment_recharge_bonus_notice"`
+	PaymentLoadBalanceStrat    *string                  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix   *string                  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix   *string                  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL        *string                  `json:"payment_help_image_url"`
+	PaymentHelpText            *string                  `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -334,6 +343,7 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
 
 	// Grok model mapping policy
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
@@ -342,6 +352,9 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// Subscription feature switch (user-facing subscription surface; see SettingKeySubscriptionEnabled)
+	SubscriptionEnabled *bool `json:"subscription_enabled"`
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
@@ -358,8 +371,9 @@ type UpdateSettingsRequest struct {
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
-	CyberSessionBlockTTLSeconds *int  `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled    *bool   `json:"cyber_session_block_enabled"`
+	CyberPolicyUserAllowlist    *string `json:"cyber_policy_user_allowlist"`
+	CyberSessionBlockTTLSeconds *int    `json:"cyber_session_block_ttl_seconds"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -369,6 +383,9 @@ type UpdateSettingsRequest struct {
 
 	// 各平台账号自动停调阈值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
 	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
+
+	// OpenAI 账号健康熔断器配置（nil = 不修改，non-nil = 整体覆盖）。
+	OpenAIAPIKeyHealthBreakerSettings *service.OpenAIAPIKeyHealthBreakerSettings `json:"openai_apikey_health_breaker_settings"`
 
 	// auth-source 层 platform quota 覆盖（override 语义：nil = 不修改，non-nil = 整体覆盖该 source 的 quota 配置）。
 	AuthSourceEmailPlatformQuotas    map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_email_platform_quotas"`
@@ -385,13 +402,13 @@ type UpdateSettingsRequest struct {
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 // ensureActorTotpForStepUp 校验当前操作者具备开启 step-up 门控的条件：
-// 必须是真人管理员会话（admin API key 无法完成 TOTP step-up，拒绝）且本人已启用 TOTP。
+// 必须是真人管理员会话（admin API key、MCP OAuth 等机器凭证无法完成 TOTP step-up，拒绝）且本人已启用 TOTP。
 // 校验失败时写入错误响应并返回 false。
 func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
-	if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
+	if reason, machine := middleware.MachineCredentialReason(c); machine {
 		response.ErrorWithDetails(c, http.StatusForbidden,
-			"Admin API key cannot enable step-up verification; use an admin session with TOTP enabled",
-			"STEP_UP_ADMIN_API_KEY_FORBIDDEN", nil)
+			"Machine credentials cannot enable step-up verification; use an admin session with TOTP enabled",
+			reason, nil)
 		return false
 	}
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
@@ -1451,6 +1468,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		req.OpenAICodexClientVersion = &normalized
 	}
+	if req.ClaudeCodeClientVersion != nil {
+		// 该值会被拼进出站 User-Agent 与 billing attribution，必须是合法版本号；空串表示跟随自动同步。
+		normalized := strings.TrimSpace(*req.ClaudeCodeClientVersion)
+		if normalized != "" && service.NormalizeClaudeCodeClientVersion(normalized) == "" {
+			response.Error(c, http.StatusBadRequest, "claude_code_client_version must be empty or a valid version (e.g. 2.1.258)")
+			return
+		}
+		req.ClaudeCodeClientVersion = &normalized
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1488,6 +1514,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	if req.CyberPolicyUserAllowlist != nil {
+		if _, err := service.ParseCyberPolicyUserAllowlist(*req.CyberPolicyUserAllowlist); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
 	if req.CyberSessionBlockTTLSeconds != nil && *req.CyberSessionBlockTTLSeconds <= 0 {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
@@ -1496,8 +1529,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
-		DefaultPlatformQuotas:       req.DefaultPlatformQuotas,
-		AccountSchedulingThresholds: req.AccountSchedulingThresholds,
+		DefaultPlatformQuotas:             req.DefaultPlatformQuotas,
+		AccountSchedulingThresholds:       req.AccountSchedulingThresholds,
+		OpenAIAPIKeyHealthBreakerSettings: req.OpenAIAPIKeyHealthBreakerSettings,
 
 		RegistrationEnabled:                 req.RegistrationEnabled,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
@@ -1764,6 +1798,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
+		ClaudeCodeClientVersion: func() string {
+			if req.ClaudeCodeClientVersion != nil {
+				return *req.ClaudeCodeClientVersion
+			}
+			return previousSettings.ClaudeCodeClientVersion
+		}(),
+		// 同步值由自动同步任务独占写入，面板保存时原样带回，避免被清空。
+		ClaudeCodeClientVersionSynced: previousSettings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled: func() bool {
+			if req.ClaudeCodeVersionAutoSyncEnabled != nil {
+				return *req.ClaudeCodeVersionAutoSyncEnabled
+			}
+			return previousSettings.ClaudeCodeVersionAutoSyncEnabled
+		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
 		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
@@ -1805,9 +1853,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAILowUpstreamRatePriorityEnabled
 		}(),
-		OpenAIOAuthSchedulingRateMultiplier: func() float64 {
-			if req.OpenAIOAuthSchedulingRateMultiplier != nil {
-				return *req.OpenAIOAuthSchedulingRateMultiplier
+		OpenAIOAuthSchedulingRateMultiplier: func() *float64 {
+			// Omitted fields preserve the override; explicit null clears it.
+			if _, sent := sentFields[service.SettingKeyOpenAIOAuthSchedulingRateMultiplier]; sent {
+				return req.OpenAIOAuthSchedulingRateMultiplier
 			}
 			return previousSettings.OpenAIOAuthSchedulingRateMultiplier
 		}(),
@@ -1828,6 +1877,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
 			}
 			return previousSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
+		}(),
+		OpenAISessionStickyEnabled: func() bool {
+			if req.OpenAISessionStickyEnabled != nil {
+				return *req.OpenAISessionStickyEnabled
+			}
+			return previousSettings.OpenAISessionStickyEnabled
+		}(),
+		OpenAIPreviousResponseStickyEnabled: func() bool {
+			if req.OpenAIPreviousResponseStickyEnabled != nil {
+				return *req.OpenAIPreviousResponseStickyEnabled
+			}
+			return previousSettings.OpenAIPreviousResponseStickyEnabled
+		}(),
+		OpenAIStrictPriorityEnabled: func() bool {
+			if req.OpenAIStrictPriorityEnabled != nil {
+				return *req.OpenAIStrictPriorityEnabled
+			}
+			return previousSettings.OpenAIStrictPriorityEnabled
 		}(),
 		OpenAIAdvancedSchedulerLBTopK:                 stringSetting(req.OpenAIAdvancedSchedulerLBTopK, previousSettings.OpenAIAdvancedSchedulerLBTopK),
 		OpenAIAdvancedSchedulerWeightPriority:         stringSetting(req.OpenAIAdvancedSchedulerWeightPriority, previousSettings.OpenAIAdvancedSchedulerWeightPriority),
@@ -1906,6 +1973,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorShowQuota
 		}(),
+		ChannelMonitorHideUserRanking: func() bool {
+			if req.ChannelMonitorHideUserRanking != nil {
+				return *req.ChannelMonitorHideUserRanking
+			}
+			return previousSettings.ChannelMonitorHideUserRanking
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -1929,6 +2002,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AvailableChannelsEnabled
 			}
 			return previousSettings.AvailableChannelsEnabled
+		}(),
+		SubscriptionEnabled: func() bool {
+			if req.SubscriptionEnabled != nil {
+				return *req.SubscriptionEnabled
+			}
+			return previousSettings.SubscriptionEnabled
 		}(),
 		ModelPlazaEnabled: func() bool {
 			if req.ModelPlazaEnabled != nil {
@@ -1965,6 +2044,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.RiskControlEnabled
 			}
 			return previousSettings.RiskControlEnabled
+		}(),
+		CyberPolicyUserAllowlist: func() string {
+			if req.CyberPolicyUserAllowlist != nil {
+				return *req.CyberPolicyUserAllowlist
+			}
+			return previousSettings.CyberPolicyUserAllowlist
 		}(),
 		CyberSessionBlockEnabled: func() bool {
 			if req.CyberSessionBlockEnabled != nil {
@@ -2072,6 +2157,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			BalanceRechargeMultiplier:     req.PaymentBalanceRechargeMultiplier,
 			SubscriptionUSDToCNYRate:      req.PaymentSubscriptionUSDToCNYRate,
 			RechargeFeeRate:               req.PaymentRechargeFeeRate,
+			RechargeBonusTiers:            rechargeBonusTiersFromDTO(req.PaymentRechargeBonusTiers),
+			RechargeBonusMode:             req.PaymentRechargeBonusMode,
+			RechargeBonusNotice:           req.PaymentRechargeBonusNotice,
 			LoadBalanceStrategy:           req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:             req.PaymentProductNamePrefix,
 			ProductNameSuffix:             req.PaymentProductNameSuffix,
@@ -2294,6 +2382,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
+		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
+		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,
@@ -2348,6 +2439,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentBalanceRechargeMultiplier:                       updatedPaymentCfg.BalanceRechargeMultiplier,
 		PaymentSubscriptionUSDToCNYRate:                        updatedPaymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                                 updatedPaymentCfg.RechargeFeeRate,
+		PaymentRechargeBonusTiers:                              rechargeBonusTiersToDTO(updatedPaymentCfg.RechargeBonusTiers),
+		PaymentRechargeBonusMode:                               rechargeBonusModeToDTO(updatedPaymentCfg.RechargeBonusMode),
+		PaymentRechargeBonusNotice:                             updatedPaymentCfg.RechargeBonusNotice,
 		PaymentLoadBalanceStrat:                                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               updatedPaymentCfg.ProductNamePrefix,
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
@@ -2366,12 +2460,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        updatedSettings.ChannelMonitorHideUserRanking,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
 		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		SubscriptionEnabled:      updatedSettings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
@@ -2380,11 +2476,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:                updatedSettings.RiskControlEnabled,
+		CyberSessionBlockEnabled:          updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:       updatedSettings.CyberSessionBlockTTLSeconds,
+		AccountSchedulingThresholds:       updatedSettings.AccountSchedulingThresholds,
+		OpenAIAPIKeyHealthBreakerSettings: updatedSettings.OpenAIAPIKeyHealthBreakerSettings,
+		AllowUserViewErrorRequests:        updatedSettings.AllowUserViewErrorRequests,
+		CyberPolicyUserAllowlist:          updatedSettings.CyberPolicyUserAllowlist,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2421,6 +2519,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
 		req.PaymentRechargeFeeRate != nil ||
+		req.PaymentRechargeBonusTiers != nil || req.PaymentRechargeBonusMode != nil || req.PaymentRechargeBonusNotice != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||

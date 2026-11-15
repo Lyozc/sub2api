@@ -158,8 +158,12 @@ func (f *fakeConcurrencyCache) CleanupStaleProcessSlots(context.Context, string)
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {
 	t.Helper()
+	return newTestGatewayHandlerWithSchedulerCache(t, group, &fakeSchedulerCache{accounts: accounts})
+}
 
-	schedulerCache := &fakeSchedulerCache{accounts: accounts}
+func newTestGatewayHandlerWithSchedulerCache(t *testing.T, group *service.Group, schedulerCache service.SchedulerCache) (*GatewayHandler, func()) {
+	t.Helper()
+
 	schedulerSnapshot := service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil)
 
 	gwSvc := service.NewGatewayService(
@@ -191,6 +195,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // compositeResolver
 		nil, // balanceNotifyService
 		nil, // userPlatformQuotaRepo
+		nil,
 	)
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。

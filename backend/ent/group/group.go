@@ -26,8 +26,20 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldI18n holds the string denoting the i18n field in the database.
+	FieldI18n = "i18n"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldInputTokenMultiplier holds the string denoting the input_token_multiplier field in the database.
+	FieldInputTokenMultiplier = "input_token_multiplier"
+	// FieldOutputTokenMultiplier holds the string denoting the output_token_multiplier field in the database.
+	FieldOutputTokenMultiplier = "output_token_multiplier"
+	// FieldCacheCreationTokenMultiplier holds the string denoting the cache_creation_token_multiplier field in the database.
+	FieldCacheCreationTokenMultiplier = "cache_creation_token_multiplier"
+	// FieldCacheReadTokenMultiplier holds the string denoting the cache_read_token_multiplier field in the database.
+	FieldCacheReadTokenMultiplier = "cache_read_token_multiplier"
+	// FieldReturnBillableUsage holds the string denoting the return_billable_usage field in the database.
+	FieldReturnBillableUsage = "return_billable_usage"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -58,6 +70,8 @@ const (
 	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldAllowBatchImageGeneration holds the string denoting the allow_batch_image_generation field in the database.
 	FieldAllowBatchImageGeneration = "allow_batch_image_generation"
+	// FieldImageCountBilling holds the string denoting the image_count_billing field in the database.
+	FieldImageCountBilling = "image_count_billing"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
@@ -228,7 +242,13 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldDescription,
+	FieldI18n,
 	FieldRateMultiplier,
+	FieldInputTokenMultiplier,
+	FieldOutputTokenMultiplier,
+	FieldCacheCreationTokenMultiplier,
+	FieldCacheReadTokenMultiplier,
+	FieldReturnBillableUsage,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -244,6 +264,7 @@ var Columns = []string{
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldAllowBatchImageGeneration,
+	FieldImageCountBilling,
 	FieldImageRateIndependent,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
@@ -326,8 +347,28 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultI18n holds the default value on creation for the "i18n" field.
+	DefaultI18n domain.GroupI18n
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultInputTokenMultiplier holds the default value on creation for the "input_token_multiplier" field.
+	DefaultInputTokenMultiplier float64
+	// InputTokenMultiplierValidator is a validator for the "input_token_multiplier" field. It is called by the builders before save.
+	InputTokenMultiplierValidator func(float64) error
+	// DefaultOutputTokenMultiplier holds the default value on creation for the "output_token_multiplier" field.
+	DefaultOutputTokenMultiplier float64
+	// OutputTokenMultiplierValidator is a validator for the "output_token_multiplier" field. It is called by the builders before save.
+	OutputTokenMultiplierValidator func(float64) error
+	// DefaultCacheCreationTokenMultiplier holds the default value on creation for the "cache_creation_token_multiplier" field.
+	DefaultCacheCreationTokenMultiplier float64
+	// CacheCreationTokenMultiplierValidator is a validator for the "cache_creation_token_multiplier" field. It is called by the builders before save.
+	CacheCreationTokenMultiplierValidator func(float64) error
+	// DefaultCacheReadTokenMultiplier holds the default value on creation for the "cache_read_token_multiplier" field.
+	DefaultCacheReadTokenMultiplier float64
+	// CacheReadTokenMultiplierValidator is a validator for the "cache_read_token_multiplier" field. It is called by the builders before save.
+	CacheReadTokenMultiplierValidator func(float64) error
+	// DefaultReturnBillableUsage holds the default value on creation for the "return_billable_usage" field.
+	DefaultReturnBillableUsage bool
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
 	DefaultPeakRateEnabled bool
 	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
@@ -362,6 +403,8 @@ var (
 	DefaultAllowImageGeneration bool
 	// DefaultAllowBatchImageGeneration holds the default value on creation for the "allow_batch_image_generation" field.
 	DefaultAllowBatchImageGeneration bool
+	// DefaultImageCountBilling holds the default value on creation for the "image_count_billing" field.
+	DefaultImageCountBilling bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
@@ -474,6 +517,31 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 }
 
+// ByInputTokenMultiplier orders the results by the input_token_multiplier field.
+func ByInputTokenMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInputTokenMultiplier, opts...).ToFunc()
+}
+
+// ByOutputTokenMultiplier orders the results by the output_token_multiplier field.
+func ByOutputTokenMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutputTokenMultiplier, opts...).ToFunc()
+}
+
+// ByCacheCreationTokenMultiplier orders the results by the cache_creation_token_multiplier field.
+func ByCacheCreationTokenMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheCreationTokenMultiplier, opts...).ToFunc()
+}
+
+// ByCacheReadTokenMultiplier orders the results by the cache_read_token_multiplier field.
+func ByCacheReadTokenMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheReadTokenMultiplier, opts...).ToFunc()
+}
+
+// ByReturnBillableUsage orders the results by the return_billable_usage field.
+func ByReturnBillableUsage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReturnBillableUsage, opts...).ToFunc()
+}
+
 // ByPeakRateEnabled orders the results by the peak_rate_enabled field.
 func ByPeakRateEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPeakRateEnabled, opts...).ToFunc()
@@ -547,6 +615,11 @@ func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowBatchImageGeneration orders the results by the allow_batch_image_generation field.
 func ByAllowBatchImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBatchImageGeneration, opts...).ToFunc()
+}
+
+// ByImageCountBilling orders the results by the image_count_billing field.
+func ByImageCountBilling(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageCountBilling, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.

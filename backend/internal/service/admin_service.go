@@ -22,6 +22,10 @@ type AdminService interface {
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
+	// FindActiveUsersByBlacklistedEmails 按收件箱身份查找命中给定邮箱的未禁用普通用户。
+	FindActiveUsersByBlacklistedEmails(ctx context.Context, emails []string) ([]User, error)
+	// BatchDisableUsers 批量禁用普通用户，返回实际禁用的人数。
+	BatchDisableUsers(ctx context.Context, userIDs []int64) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
@@ -233,20 +237,27 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
-	Name                      string
-	Description               string
-	Platform                  string
-	RateMultiplier            float64
-	IsExclusive               bool
-	SubscriptionType          string   // standard/subscription
-	DailyLimitUSD             *float64 // 日限额 (USD)
-	WeeklyLimitUSD            *float64 // 周限额 (USD)
-	MonthlyLimitUSD           *float64 // 月限额 (USD)
-	LongContextPricingEnabled bool
-	ModelPricing              []ChannelModelPricing
+	Name                         string
+	Description                  string
+	I18n                         GroupI18n // 名称与描述的界面语言译文
+	Platform                     string
+	RateMultiplier               float64
+	InputTokenMultiplier         *float64
+	OutputTokenMultiplier        *float64
+	CacheCreationTokenMultiplier *float64
+	CacheReadTokenMultiplier     *float64
+	ReturnBillableUsage          bool
+	IsExclusive                  bool
+	SubscriptionType             string   // standard/subscription
+	DailyLimitUSD                *float64 // 日限额 (USD)
+	WeeklyLimitUSD               *float64 // 周限额 (USD)
+	MonthlyLimitUSD              *float64 // 月限额 (USD)
+	LongContextPricingEnabled    bool
+	ModelPricing                 []ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool
 	AllowBatchImageGeneration    bool
+	ImageCountBilling            bool
 	ImageRateIndependent         bool
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
@@ -313,21 +324,28 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name                      string
-	Description               *string
-	Platform                  string
-	RateMultiplier            *float64 // 使用指针以支持设置为0
-	IsExclusive               *bool
-	Status                    string
-	SubscriptionType          string   // standard/subscription
-	DailyLimitUSD             *float64 // 日限额 (USD)
-	WeeklyLimitUSD            *float64 // 周限额 (USD)
-	MonthlyLimitUSD           *float64 // 月限额 (USD)
-	LongContextPricingEnabled *bool
-	ModelPricing              *[]ChannelModelPricing
+	Name                         string
+	Description                  *string
+	I18n                         *GroupI18n // nil 表示不修改；非 nil 整体替换
+	Platform                     string
+	RateMultiplier               *float64 // 使用指针以支持设置为0
+	InputTokenMultiplier         *float64
+	OutputTokenMultiplier        *float64
+	CacheCreationTokenMultiplier *float64
+	CacheReadTokenMultiplier     *float64
+	ReturnBillableUsage          *bool
+	IsExclusive                  *bool
+	Status                       string
+	SubscriptionType             string   // standard/subscription
+	DailyLimitUSD                *float64 // 日限额 (USD)
+	WeeklyLimitUSD               *float64 // 周限额 (USD)
+	MonthlyLimitUSD              *float64 // 月限额 (USD)
+	LongContextPricingEnabled    *bool
+	ModelPricing                 *[]ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool
+	ImageCountBilling            *bool
 	ImageRateIndependent         *bool
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
@@ -394,6 +412,7 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
+	ProxyMode          string // 受限写入在验权后选择代理。
 	Name               string
 	Notes              *string
 	Platform           string
@@ -426,6 +445,7 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
+	ProxyMode             string // 受限写入在验权后选择代理。
 	Name                  string
 	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey
@@ -541,8 +561,8 @@ type UpdateProxyInput struct {
 	Protocol       string
 	Host           string
 	Port           int
-	Username       string
-	Password       string
+	Username       *string
+	Password       *string
 	Status         string
 	ExpiresAt      *time.Time
 	ClearExpiresAt bool

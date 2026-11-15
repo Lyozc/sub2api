@@ -67,7 +67,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
 		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
 		settingKeyForwardedClientIPModeV2:                   "true",
-		SettingKeySiteName:                                  "Sub2API",
+		SettingKeySiteName:                                  "Lyozc",
 		SettingKeySiteLogo:                                  "",
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
 		SettingKeyPurchaseSubscriptionURL:                   "",
@@ -191,6 +191,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 		SettingKeyChannelMonitorHideThroughput:         "true",
 		SettingKeyChannelMonitorShowQuota:              "false",
+		SettingKeyChannelMonitorHideUserRanking:        "false",
 
 		// Grok compatibility defaults: cross-client mapping stays enabled unless
 		// operators explicitly disable it.
@@ -200,6 +201,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
+
+		// Subscription feature (default enabled; opt-out)
+		SettingKeySubscriptionEnabled: "true",
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
 		SettingKeyModelPlazaEnabled:       "false",
@@ -216,6 +220,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 		SettingKeyCyberSessionBlockEnabled:    "false",
+		SettingKeyCyberPolicyUserAllowlist:    "",
 		SettingKeyCyberSessionBlockTTLSeconds: "3600",
 
 		// Claude Code version check (default: empty = disabled)
@@ -242,6 +247,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
+		SettingKeyClaudeCodeClientVersion:                            "",
+		SettingKeyClaudeCodeClientVersionSynced:                      "",
+		SettingKeyClaudeCodeVersionAutoSyncEnabled:                   "true",
 		SettingPaymentVisibleMethodAlipaySource:                      "",
 		SettingPaymentVisibleMethodWxpaySource:                       "",
 		SettingPaymentVisibleMethodAlipayEnabled:                     "false",
@@ -260,6 +268,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost:          "",
 		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse:      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
+		SettingKeyOpenAISessionStickyEnabled:                         "true",
+		SettingKeyOpenAIPreviousResponseStickyEnabled:                "true",
+		SettingKeyOpenAIStrictPriorityEnabled:                        "false",
 
 		SettingKeyAllowUserViewErrorRequests: "false",
 	}
@@ -311,7 +322,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		}
 	}
 	result := &SystemSettings{
-		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
+		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] != "false",
 		EmailVerifyEnabled:                     emailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		RegistrationEmailDomainQuotaEnabled:    settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
@@ -804,6 +815,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 配额展示默认关闭且 fail-closed：仅字面 "true" 视为开启
 	// （与 setting_public.go 公开读取路径保持一致）。
 	result.ChannelMonitorShowQuota = settings[SettingKeyChannelMonitorShowQuota] == "true"
+	result.ChannelMonitorHideUserRanking = isTrueSettingValue(settings[SettingKeyChannelMonitorHideUserRanking])
 
 	// Grok default mapping policy
 	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
@@ -817,6 +829,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+
+	// Subscription feature (default: enabled; only an explicit false disables)
+	result.SubscriptionEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionEnabled])
 
 	// Model plaza feature (default: disabled; strict true)
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
@@ -832,6 +847,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 	result.CyberSessionBlockEnabled = settings[SettingKeyCyberSessionBlockEnabled] == "true"
+	result.CyberPolicyUserAllowlist = settings[SettingKeyCyberPolicyUserAllowlist]
 	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds])); err == nil && v > 0 {
 		result.CyberSessionBlockTTLSeconds = v
 	} else {
@@ -883,6 +899,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.OpenAICodexVersionAutoSyncEnabled = true
 	}
+	result.ClaudeCodeClientVersion = NormalizeClaudeCodeClientVersion(settings[SettingKeyClaudeCodeClientVersion])
+	result.ClaudeCodeClientVersionSynced = NormalizeClaudeCodeClientVersion(settings[SettingKeyClaudeCodeClientVersionSynced])
+	// 自动同步默认开启：缺失/空值一律视为开启，与 openai_codex_version_auto_sync_enabled 同一惯例。
+	if v, ok := settings[SettingKeyClaudeCodeVersionAutoSyncEnabled]; ok && v != "" {
+		result.ClaudeCodeVersionAutoSyncEnabled = v == "true"
+	} else {
+		result.ClaudeCodeVersionAutoSyncEnabled = true
+	}
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]
@@ -907,10 +931,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
 	result.OpenAILowUpstreamRatePriorityEnabled = settings[SettingKeyOpenAILowUpstreamRatePriorityEnabled] == "true"
-	result.OpenAIOAuthSchedulingRateMultiplier = parseOpenAIOAuthSchedulingRateMultiplier(settings[SettingKeyOpenAIOAuthSchedulingRateMultiplier])
+	result.OpenAIOAuthSchedulingRateMultiplier = parseOpenAIOAuthSchedulingRateMultiplier(settings)
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 	result.OpenAIAdvancedSchedulerStickyWeightedEnabled = settings[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] == "true"
 	result.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled = settings[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] == "true"
+	// 粘性开关默认开启：存量部署的 settings 表没有这两个键，缺省必须视为开启，
+	// 否则升级后粘性会被静默关闭。
+	result.OpenAISessionStickyEnabled = !parseSettingExplicitlyFalse(settings[SettingKeyOpenAISessionStickyEnabled])
+	result.OpenAIPreviousResponseStickyEnabled = !parseSettingExplicitlyFalse(settings[SettingKeyOpenAIPreviousResponseStickyEnabled])
+	result.OpenAIStrictPriorityEnabled = settings[SettingKeyOpenAIStrictPriorityEnabled] == "true"
 	result.OpenAIAdvancedSchedulerLBTopK = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 	result.OpenAIAdvancedSchedulerWeightPriority = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightPriority])
 	result.OpenAIAdvancedSchedulerWeightLoad = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightLoad])
@@ -970,6 +999,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		}
 	}
 
+	result.OpenAIAPIKeyHealthBreakerSettings = DefaultOpenAIAPIKeyHealthBreakerSettings()
+	if raw := strings.TrimSpace(settings[SettingKeyOpenAIAPIKeyHealthBreakerSettings]); raw != "" {
+		breaker := DefaultOpenAIAPIKeyHealthBreakerSettings()
+		if err := json.Unmarshal([]byte(raw), breaker); err != nil {
+			slog.Warn("[Setting] parseSettings: unmarshal openai_apikey_health_breaker_settings failed", "error", err)
+		} else {
+			result.OpenAIAPIKeyHealthBreakerSettings = normalizeOpenAIAPIKeyHealthBreakerSettings(breaker)
+		}
+	}
+
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	// Publish Grok default model_mapping options for accounts with empty mapping.
@@ -1004,6 +1043,15 @@ func clampAffiliateRebateRate(value float64) float64 {
 func isFalseSettingValue(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "false", "0", "off", "disabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTrueSettingValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "on", "enabled":
 		return true
 	default:
 		return false
@@ -1063,7 +1111,7 @@ func formatOpenAIAdvancedSchedulerFloat(value float64) string {
 }
 
 func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *SystemSettings) error {
-	if rate := settings.OpenAIOAuthSchedulingRateMultiplier; rate < 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+	if rate := settings.OpenAIOAuthSchedulingRateMultiplier; rate != nil && (*rate < 0 || math.IsNaN(*rate) || math.IsInf(*rate, 0)) {
 		return infraerrors.BadRequest("INVALID_OPENAI_OAUTH_SCHEDULING_RATE_MULTIPLIER", "OpenAI OAuth scheduling rate multiplier must be a finite non-negative number")
 	}
 
@@ -1115,12 +1163,24 @@ func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *Sys
 	return nil
 }
 
-func parseOpenAIOAuthSchedulingRateMultiplier(raw string) float64 {
+func parseOpenAIOAuthSchedulingRateMultiplier(settings map[string]string) *float64 {
+	raw, exists := settings[SettingKeyOpenAIOAuthSchedulingRateMultiplier]
+	if !exists {
+		// Preserve the legacy default until an administrator explicitly clears it.
+		value := defaultOpenAIOAuthSchedulingRateMultiplier
+		return &value
+	}
 	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-		return defaultOpenAIOAuthSchedulingRateMultiplier
+		return nil
 	}
-	return value
+	return &value
+}
+
+// parseSettingExplicitlyFalse 解析「默认开启、显式关闭」的布尔设置：
+// 仅存储值明确为 false 时返回 true，缺省/空值/无法识别一律视为未关闭。
+func parseSettingExplicitlyFalse(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), "false")
 }
 
 // resolveOpenAIAdvancedSchedulerWeight 返回覆盖值（已归一化的非空字符串），空则回退默认值。

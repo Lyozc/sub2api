@@ -1,0 +1,1309 @@
+{
+  "kling-video-v2-5": {
+    "t2v": {
+      "durations": [
+        5,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        5,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_max_edge": 65536,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5
+    }
+  },
+  "kling-video-v2-6": {
+    "t2v": {
+      "durations": [
+        5,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        5,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_max_edge": 65536,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5
+    }
+  },
+  "kling-video-o1": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "reference": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0,
+      "image_max_aspect": 0,
+      "references": {
+        "image_slots": [
+          "image_1",
+          "image_2",
+          "image_3",
+          "image_4",
+          "image_5",
+          "image_6",
+          "image_7"
+        ],
+        "video_slots": [
+          "video_1"
+        ],
+        "audio_slots": [],
+        "required_slots": [],
+        "max_images": 7,
+        "max_total": 8,
+        "max_images_with_video": 4,
+        "keep_original_sound": false,
+        "disable_generated_audio_with_video": false,
+        "prefer_multi_shots": false,
+        "multi_shots_required": false
+      }
+    }
+  },
+  "kling-video-v3-0-omni": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "reference": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0,
+      "image_max_aspect": 0,
+      "references": {
+        "image_slots": [
+          "image_1",
+          "image_2",
+          "image_3",
+          "image_4",
+          "image_5",
+          "image_6",
+          "image_7"
+        ],
+        "video_slots": [
+          "video_1"
+        ],
+        "audio_slots": [],
+        "required_slots": [],
+        "max_images": 7,
+        "max_total": 8,
+        "max_images_with_video": 4,
+        "keep_original_sound": true,
+        "disable_generated_audio_with_video": true,
+        "prefer_multi_shots": true,
+        "multi_shots_required": false
+      }
+    }
+  },
+  "kling-video-v3-0": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5
+    }
+  },
+  "kling-video-v3-0-turbo": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "1080p",
+      "ratios": [],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5
+    }
+  },
+  "kling-video-v4-0": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "21:9"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "21:9"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5,
+      "references": {
+        "image_slots": [
+          "input",
+          "tail_image",
+          "keyframe_1",
+          "keyframe_2",
+          "keyframe_3",
+          "keyframe_4",
+          "keyframe_5",
+          "keyframe_6",
+          "keyframe_7",
+          "keyframe_8",
+          "keyframe_9",
+          "keyframe_10"
+        ],
+        "video_slots": [],
+        "audio_slots": [],
+        "required_slots": [],
+        "max_images": 10,
+        "max_total": 10,
+        "max_images_with_video": 0,
+        "keep_original_sound": false,
+        "disable_generated_audio_with_video": false
+      }
+    },
+    "reference": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "resolutions": [
+        "",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "21:9",
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5,
+      "references": {
+        "image_slots": [
+          "image_1",
+          "image_2",
+          "image_3",
+          "image_4",
+          "image_5",
+          "image_6",
+          "image_7",
+          "image_8",
+          "image_9",
+          "image_10"
+        ],
+        "video_slots": [
+          "video_1",
+          "video_2",
+          "video_3",
+          "video_4",
+          "video_5"
+        ],
+        "audio_slots": [
+          "audio_1",
+          "audio_2",
+          "audio_3"
+        ],
+        "required_slots": [],
+        "max_images": 10,
+        "max_total": 15,
+        "max_images_with_video": 0,
+        "keep_original_sound": true,
+        "disable_generated_audio_with_video": false,
+        "prefer_multi_shots": true,
+        "multi_shots_required": true
+      }
+    }
+  },
+  "kling-video-v4-0-flash": {
+    "t2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "resolutions": [
+        "",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "21:9"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300
+    },
+    "i2v": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "resolutions": [
+        "",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "21:9"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [
+        "720p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5,
+      "references": {
+        "image_slots": [
+          "input"
+        ],
+        "video_slots": [],
+        "audio_slots": [],
+        "required_slots": [
+          "input"
+        ],
+        "max_images": 1,
+        "max_total": 1,
+        "max_images_with_video": 0,
+        "keep_original_sound": false,
+        "disable_generated_audio_with_video": false
+      }
+    },
+    "reference": {
+      "durations": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "resolutions": [
+        "",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "21:9",
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "modes": [],
+      "sound": true,
+      "audio_resolutions": [
+        "720p"
+      ],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 2500,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 300,
+      "image_min_aspect": 0.4,
+      "image_max_aspect": 2.5,
+      "references": {
+        "image_slots": [
+          "image_1",
+          "image_2",
+          "image_3",
+          "image_4",
+          "image_5",
+          "image_6",
+          "image_7",
+          "image_8",
+          "image_9",
+          "image_10"
+        ],
+        "video_slots": [
+          "video_1",
+          "video_2",
+          "video_3",
+          "video_4",
+          "video_5"
+        ],
+        "audio_slots": [],
+        "required_slots": [],
+        "max_images": 10,
+        "max_total": 15,
+        "max_images_with_video": 0,
+        "keep_original_sound": true,
+        "disable_generated_audio_with_video": false,
+        "prefer_multi_shots": true,
+        "multi_shots_required": true
+      }
+    }
+  },
+  "grok-imagine-video": {
+    "t2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    },
+    "i2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    }
+  },
+  "grok-imagine-video-1.5": {
+    "t2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    },
+    "i2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    }
+  },
+  "grok-imagine-video-1.5-preview": {
+    "t2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    },
+    "i2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    }
+  },
+  "grok-imagine-video-1.5-lite": {
+    "t2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    },
+    "i2v": {
+      "durations": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "ratios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "modes": [],
+      "sound": false,
+      "audio_resolutions": [],
+      "negative_prompt": false,
+      "cfg_scale": false,
+      "prompt_max": 4000,
+      "image_max_bytes": 10485760,
+      "image_min_edge": 0
+    }
+  }
+}

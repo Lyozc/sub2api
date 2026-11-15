@@ -92,6 +92,12 @@ func (_c *GroupCreate) SetNillableDescription(v *string) *GroupCreate {
 	return _c
 }
 
+// SetI18n sets the "i18n" field.
+func (_c *GroupCreate) SetI18n(v domain.GroupI18n) *GroupCreate {
+	_c.mutation.SetI18n(v)
+	return _c
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_c *GroupCreate) SetRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetRateMultiplier(v)
@@ -102,6 +108,76 @@ func (_c *GroupCreate) SetRateMultiplier(v float64) *GroupCreate {
 func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetInputTokenMultiplier sets the "input_token_multiplier" field.
+func (_c *GroupCreate) SetInputTokenMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetInputTokenMultiplier(v)
+	return _c
+}
+
+// SetNillableInputTokenMultiplier sets the "input_token_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableInputTokenMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetInputTokenMultiplier(*v)
+	}
+	return _c
+}
+
+// SetOutputTokenMultiplier sets the "output_token_multiplier" field.
+func (_c *GroupCreate) SetOutputTokenMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetOutputTokenMultiplier(v)
+	return _c
+}
+
+// SetNillableOutputTokenMultiplier sets the "output_token_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOutputTokenMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetOutputTokenMultiplier(*v)
+	}
+	return _c
+}
+
+// SetCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field.
+func (_c *GroupCreate) SetCacheCreationTokenMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetCacheCreationTokenMultiplier(v)
+	return _c
+}
+
+// SetNillableCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheCreationTokenMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheCreationTokenMultiplier(*v)
+	}
+	return _c
+}
+
+// SetCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field.
+func (_c *GroupCreate) SetCacheReadTokenMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetCacheReadTokenMultiplier(v)
+	return _c
+}
+
+// SetNillableCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheReadTokenMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheReadTokenMultiplier(*v)
+	}
+	return _c
+}
+
+// SetReturnBillableUsage sets the "return_billable_usage" field.
+func (_c *GroupCreate) SetReturnBillableUsage(v bool) *GroupCreate {
+	_c.mutation.SetReturnBillableUsage(v)
+	return _c
+}
+
+// SetNillableReturnBillableUsage sets the "return_billable_usage" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableReturnBillableUsage(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetReturnBillableUsage(*v)
 	}
 	return _c
 }
@@ -312,6 +388,20 @@ func (_c *GroupCreate) SetAllowBatchImageGeneration(v bool) *GroupCreate {
 func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetAllowBatchImageGeneration(*v)
+	}
+	return _c
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_c *GroupCreate) SetImageCountBilling(v bool) *GroupCreate {
+	_c.mutation.SetImageCountBilling(v)
+	return _c
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageCountBilling(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageCountBilling(*v)
 	}
 	return _c
 }
@@ -1047,9 +1137,33 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		v := group.DefaultI18n
+		_c.mutation.SetI18n(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.InputTokenMultiplier(); !ok {
+		v := group.DefaultInputTokenMultiplier
+		_c.mutation.SetInputTokenMultiplier(v)
+	}
+	if _, ok := _c.mutation.OutputTokenMultiplier(); !ok {
+		v := group.DefaultOutputTokenMultiplier
+		_c.mutation.SetOutputTokenMultiplier(v)
+	}
+	if _, ok := _c.mutation.CacheCreationTokenMultiplier(); !ok {
+		v := group.DefaultCacheCreationTokenMultiplier
+		_c.mutation.SetCacheCreationTokenMultiplier(v)
+	}
+	if _, ok := _c.mutation.CacheReadTokenMultiplier(); !ok {
+		v := group.DefaultCacheReadTokenMultiplier
+		_c.mutation.SetCacheReadTokenMultiplier(v)
+	}
+	if _, ok := _c.mutation.ReturnBillableUsage(); !ok {
+		v := group.DefaultReturnBillableUsage
+		_c.mutation.SetReturnBillableUsage(v)
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		v := group.DefaultPeakRateEnabled
@@ -1094,6 +1208,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		v := group.DefaultAllowBatchImageGeneration
 		_c.mutation.SetAllowBatchImageGeneration(v)
+	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		v := group.DefaultImageCountBilling
+		_c.mutation.SetImageCountBilling(v)
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
@@ -1230,8 +1348,46 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		return &ValidationError{Name: "i18n", err: errors.New(`ent: missing required field "Group.i18n"`)}
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.InputTokenMultiplier(); !ok {
+		return &ValidationError{Name: "input_token_multiplier", err: errors.New(`ent: missing required field "Group.input_token_multiplier"`)}
+	}
+	if v, ok := _c.mutation.InputTokenMultiplier(); ok {
+		if err := group.InputTokenMultiplierValidator(v); err != nil {
+			return &ValidationError{Name: "input_token_multiplier", err: fmt.Errorf(`ent: validator failed for field "Group.input_token_multiplier": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.OutputTokenMultiplier(); !ok {
+		return &ValidationError{Name: "output_token_multiplier", err: errors.New(`ent: missing required field "Group.output_token_multiplier"`)}
+	}
+	if v, ok := _c.mutation.OutputTokenMultiplier(); ok {
+		if err := group.OutputTokenMultiplierValidator(v); err != nil {
+			return &ValidationError{Name: "output_token_multiplier", err: fmt.Errorf(`ent: validator failed for field "Group.output_token_multiplier": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CacheCreationTokenMultiplier(); !ok {
+		return &ValidationError{Name: "cache_creation_token_multiplier", err: errors.New(`ent: missing required field "Group.cache_creation_token_multiplier"`)}
+	}
+	if v, ok := _c.mutation.CacheCreationTokenMultiplier(); ok {
+		if err := group.CacheCreationTokenMultiplierValidator(v); err != nil {
+			return &ValidationError{Name: "cache_creation_token_multiplier", err: fmt.Errorf(`ent: validator failed for field "Group.cache_creation_token_multiplier": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CacheReadTokenMultiplier(); !ok {
+		return &ValidationError{Name: "cache_read_token_multiplier", err: errors.New(`ent: missing required field "Group.cache_read_token_multiplier"`)}
+	}
+	if v, ok := _c.mutation.CacheReadTokenMultiplier(); ok {
+		if err := group.CacheReadTokenMultiplierValidator(v); err != nil {
+			return &ValidationError{Name: "cache_read_token_multiplier", err: fmt.Errorf(`ent: validator failed for field "Group.cache_read_token_multiplier": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ReturnBillableUsage(); !ok {
+		return &ValidationError{Name: "return_billable_usage", err: errors.New(`ent: missing required field "Group.return_billable_usage"`)}
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
@@ -1295,6 +1451,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
+	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		return &ValidationError{Name: "image_count_billing", err: errors.New(`ent: missing required field "Group.image_count_billing"`)}
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
@@ -1465,9 +1624,33 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldDescription, field.TypeString, value)
 		_node.Description = &value
 	}
+	if value, ok := _c.mutation.I18n(); ok {
+		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
+		_node.I18n = value
+	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+	}
+	if value, ok := _c.mutation.InputTokenMultiplier(); ok {
+		_spec.SetField(group.FieldInputTokenMultiplier, field.TypeFloat64, value)
+		_node.InputTokenMultiplier = value
+	}
+	if value, ok := _c.mutation.OutputTokenMultiplier(); ok {
+		_spec.SetField(group.FieldOutputTokenMultiplier, field.TypeFloat64, value)
+		_node.OutputTokenMultiplier = value
+	}
+	if value, ok := _c.mutation.CacheCreationTokenMultiplier(); ok {
+		_spec.SetField(group.FieldCacheCreationTokenMultiplier, field.TypeFloat64, value)
+		_node.CacheCreationTokenMultiplier = value
+	}
+	if value, ok := _c.mutation.CacheReadTokenMultiplier(); ok {
+		_spec.SetField(group.FieldCacheReadTokenMultiplier, field.TypeFloat64, value)
+		_node.CacheReadTokenMultiplier = value
+	}
+	if value, ok := _c.mutation.ReturnBillableUsage(); ok {
+		_spec.SetField(group.FieldReturnBillableUsage, field.TypeBool, value)
+		_node.ReturnBillableUsage = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -1528,6 +1711,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 		_node.AllowBatchImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+		_node.ImageCountBilling = value
 	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1925,6 +2112,18 @@ func (u *GroupUpsert) ClearDescription() *GroupUpsert {
 	return u
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsert) SetI18n(v domain.GroupI18n) *GroupUpsert {
+	u.Set(group.FieldI18n, v)
+	return u
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateI18n() *GroupUpsert {
+	u.SetExcluded(group.FieldI18n)
+	return u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsert) SetRateMultiplier(v float64) *GroupUpsert {
 	u.Set(group.FieldRateMultiplier, v)
@@ -1940,6 +2139,90 @@ func (u *GroupUpsert) UpdateRateMultiplier() *GroupUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldRateMultiplier, v)
+	return u
+}
+
+// SetInputTokenMultiplier sets the "input_token_multiplier" field.
+func (u *GroupUpsert) SetInputTokenMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldInputTokenMultiplier, v)
+	return u
+}
+
+// UpdateInputTokenMultiplier sets the "input_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateInputTokenMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldInputTokenMultiplier)
+	return u
+}
+
+// AddInputTokenMultiplier adds v to the "input_token_multiplier" field.
+func (u *GroupUpsert) AddInputTokenMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldInputTokenMultiplier, v)
+	return u
+}
+
+// SetOutputTokenMultiplier sets the "output_token_multiplier" field.
+func (u *GroupUpsert) SetOutputTokenMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldOutputTokenMultiplier, v)
+	return u
+}
+
+// UpdateOutputTokenMultiplier sets the "output_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateOutputTokenMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldOutputTokenMultiplier)
+	return u
+}
+
+// AddOutputTokenMultiplier adds v to the "output_token_multiplier" field.
+func (u *GroupUpsert) AddOutputTokenMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldOutputTokenMultiplier, v)
+	return u
+}
+
+// SetCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field.
+func (u *GroupUpsert) SetCacheCreationTokenMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheCreationTokenMultiplier, v)
+	return u
+}
+
+// UpdateCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheCreationTokenMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheCreationTokenMultiplier)
+	return u
+}
+
+// AddCacheCreationTokenMultiplier adds v to the "cache_creation_token_multiplier" field.
+func (u *GroupUpsert) AddCacheCreationTokenMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheCreationTokenMultiplier, v)
+	return u
+}
+
+// SetCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field.
+func (u *GroupUpsert) SetCacheReadTokenMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheReadTokenMultiplier, v)
+	return u
+}
+
+// UpdateCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheReadTokenMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheReadTokenMultiplier)
+	return u
+}
+
+// AddCacheReadTokenMultiplier adds v to the "cache_read_token_multiplier" field.
+func (u *GroupUpsert) AddCacheReadTokenMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheReadTokenMultiplier, v)
+	return u
+}
+
+// SetReturnBillableUsage sets the "return_billable_usage" field.
+func (u *GroupUpsert) SetReturnBillableUsage(v bool) *GroupUpsert {
+	u.Set(group.FieldReturnBillableUsage, v)
+	return u
+}
+
+// UpdateReturnBillableUsage sets the "return_billable_usage" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateReturnBillableUsage() *GroupUpsert {
+	u.SetExcluded(group.FieldReturnBillableUsage)
 	return u
 }
 
@@ -2156,6 +2439,18 @@ func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsert) SetImageCountBilling(v bool) *GroupUpsert {
+	u.Set(group.FieldImageCountBilling, v)
+	return u
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageCountBilling() *GroupUpsert {
+	u.SetExcluded(group.FieldImageCountBilling)
 	return u
 }
 
@@ -3039,6 +3334,20 @@ func (u *GroupUpsertOne) ClearDescription() *GroupUpsertOne {
 	})
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertOne) SetI18n(v domain.GroupI18n) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateI18n() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
+	})
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsertOne) SetRateMultiplier(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3057,6 +3366,104 @@ func (u *GroupUpsertOne) AddRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetInputTokenMultiplier sets the "input_token_multiplier" field.
+func (u *GroupUpsertOne) SetInputTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetInputTokenMultiplier(v)
+	})
+}
+
+// AddInputTokenMultiplier adds v to the "input_token_multiplier" field.
+func (u *GroupUpsertOne) AddInputTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddInputTokenMultiplier(v)
+	})
+}
+
+// UpdateInputTokenMultiplier sets the "input_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateInputTokenMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateInputTokenMultiplier()
+	})
+}
+
+// SetOutputTokenMultiplier sets the "output_token_multiplier" field.
+func (u *GroupUpsertOne) SetOutputTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOutputTokenMultiplier(v)
+	})
+}
+
+// AddOutputTokenMultiplier adds v to the "output_token_multiplier" field.
+func (u *GroupUpsertOne) AddOutputTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddOutputTokenMultiplier(v)
+	})
+}
+
+// UpdateOutputTokenMultiplier sets the "output_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateOutputTokenMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOutputTokenMultiplier()
+	})
+}
+
+// SetCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field.
+func (u *GroupUpsertOne) SetCacheCreationTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheCreationTokenMultiplier(v)
+	})
+}
+
+// AddCacheCreationTokenMultiplier adds v to the "cache_creation_token_multiplier" field.
+func (u *GroupUpsertOne) AddCacheCreationTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheCreationTokenMultiplier(v)
+	})
+}
+
+// UpdateCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheCreationTokenMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheCreationTokenMultiplier()
+	})
+}
+
+// SetCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field.
+func (u *GroupUpsertOne) SetCacheReadTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheReadTokenMultiplier(v)
+	})
+}
+
+// AddCacheReadTokenMultiplier adds v to the "cache_read_token_multiplier" field.
+func (u *GroupUpsertOne) AddCacheReadTokenMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheReadTokenMultiplier(v)
+	})
+}
+
+// UpdateCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheReadTokenMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheReadTokenMultiplier()
+	})
+}
+
+// SetReturnBillableUsage sets the "return_billable_usage" field.
+func (u *GroupUpsertOne) SetReturnBillableUsage(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReturnBillableUsage(v)
+	})
+}
+
+// UpdateReturnBillableUsage sets the "return_billable_usage" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateReturnBillableUsage() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReturnBillableUsage()
 	})
 }
 
@@ -3309,6 +3716,20 @@ func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertOne) SetImageCountBilling(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageCountBilling() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -4485,6 +4906,20 @@ func (u *GroupUpsertBulk) ClearDescription() *GroupUpsertBulk {
 	})
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertBulk) SetI18n(v domain.GroupI18n) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateI18n() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
+	})
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsertBulk) SetRateMultiplier(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4503,6 +4938,104 @@ func (u *GroupUpsertBulk) AddRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetInputTokenMultiplier sets the "input_token_multiplier" field.
+func (u *GroupUpsertBulk) SetInputTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetInputTokenMultiplier(v)
+	})
+}
+
+// AddInputTokenMultiplier adds v to the "input_token_multiplier" field.
+func (u *GroupUpsertBulk) AddInputTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddInputTokenMultiplier(v)
+	})
+}
+
+// UpdateInputTokenMultiplier sets the "input_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateInputTokenMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateInputTokenMultiplier()
+	})
+}
+
+// SetOutputTokenMultiplier sets the "output_token_multiplier" field.
+func (u *GroupUpsertBulk) SetOutputTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOutputTokenMultiplier(v)
+	})
+}
+
+// AddOutputTokenMultiplier adds v to the "output_token_multiplier" field.
+func (u *GroupUpsertBulk) AddOutputTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddOutputTokenMultiplier(v)
+	})
+}
+
+// UpdateOutputTokenMultiplier sets the "output_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateOutputTokenMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOutputTokenMultiplier()
+	})
+}
+
+// SetCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field.
+func (u *GroupUpsertBulk) SetCacheCreationTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheCreationTokenMultiplier(v)
+	})
+}
+
+// AddCacheCreationTokenMultiplier adds v to the "cache_creation_token_multiplier" field.
+func (u *GroupUpsertBulk) AddCacheCreationTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheCreationTokenMultiplier(v)
+	})
+}
+
+// UpdateCacheCreationTokenMultiplier sets the "cache_creation_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheCreationTokenMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheCreationTokenMultiplier()
+	})
+}
+
+// SetCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field.
+func (u *GroupUpsertBulk) SetCacheReadTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheReadTokenMultiplier(v)
+	})
+}
+
+// AddCacheReadTokenMultiplier adds v to the "cache_read_token_multiplier" field.
+func (u *GroupUpsertBulk) AddCacheReadTokenMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheReadTokenMultiplier(v)
+	})
+}
+
+// UpdateCacheReadTokenMultiplier sets the "cache_read_token_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheReadTokenMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheReadTokenMultiplier()
+	})
+}
+
+// SetReturnBillableUsage sets the "return_billable_usage" field.
+func (u *GroupUpsertBulk) SetReturnBillableUsage(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReturnBillableUsage(v)
+	})
+}
+
+// UpdateReturnBillableUsage sets the "return_billable_usage" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateReturnBillableUsage() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReturnBillableUsage()
 	})
 }
 
@@ -4755,6 +5288,20 @@ func (u *GroupUpsertBulk) SetAllowBatchImageGeneration(v bool) *GroupUpsertBulk 
 func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertBulk) SetImageCountBilling(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageCountBilling() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 

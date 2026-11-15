@@ -58,6 +58,14 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.CacheReadTokens,
 			log.CacheCreation5mTokens,
 			log.CacheCreation1hTokens,
+			sqlmock.AnyArg(), // billable_input_tokens
+			sqlmock.AnyArg(), // billable_output_tokens
+			sqlmock.AnyArg(), // billable_cache_creation_tokens
+			sqlmock.AnyArg(), // billable_cache_read_tokens
+			sqlmock.AnyArg(), // input_token_multiplier
+			sqlmock.AnyArg(), // output_token_multiplier
+			sqlmock.AnyArg(), // cache_creation_token_multiplier
+			sqlmock.AnyArg(), // cache_read_token_multiplier
 			log.ImageOutputTokens,
 			log.ImageOutputCost,
 			log.ImageInputTokens,
@@ -102,6 +110,8 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
+			log.CacheCreation30mTokens,
+			log.CacheCreation12hTokens,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -153,6 +163,14 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.CacheReadTokens,
 			log.CacheCreation5mTokens,
 			log.CacheCreation1hTokens,
+			sqlmock.AnyArg(), // billable_input_tokens
+			sqlmock.AnyArg(), // billable_output_tokens
+			sqlmock.AnyArg(), // billable_cache_creation_tokens
+			sqlmock.AnyArg(), // billable_cache_read_tokens
+			sqlmock.AnyArg(), // input_token_multiplier
+			sqlmock.AnyArg(), // output_token_multiplier
+			sqlmock.AnyArg(), // cache_creation_token_multiplier
+			sqlmock.AnyArg(), // cache_read_token_multiplier
 			log.ImageOutputTokens,
 			log.ImageOutputCost,
 			log.ImageInputTokens,
@@ -197,6 +215,8 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
+			log.CacheCreation30mTokens,
+			log.CacheCreation12hTokens,
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -278,9 +298,9 @@ func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestT
 	prepared := prepareUsageLogInsert(log)
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-2])
-	require.Equal(t, true, prepared.args[len(prepared.args)-2])
-	require.Equal(t, int16(service.RequestTypeStream), prepared.args[30])
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-4])
+	require.Equal(t, true, prepared.args[len(prepared.args)-4])
+	require.Equal(t, int16(service.RequestTypeStream), prepared.args[38])
 	require.Equal(t, service.RequestTypeStream, log.RequestType)
 	require.True(t, log.Stream)
 	require.False(t, log.OpenAIWSMode)
@@ -307,11 +327,11 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
-	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[38])
-	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[39])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[40])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[41])
-	breakdownJSON, ok := prepared.args[42].(string)
+	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[46])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[47])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[48])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[49])
+	breakdownJSON, ok := prepared.args[50].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -923,6 +943,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullInt64{},
 			sql.NullInt64{},
 			0, 0, 0, 0, 0, 0,
+			sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
+			sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{},
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost
 			0.0, 0.0, 0.0, 0.0, 0.8, 0.8,
@@ -960,6 +982,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
 			false, // native_compaction_v2
+			0,     // cache_creation_30m_tokens
+			0,     // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -985,17 +1009,25 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "req-1"},
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
-			sql.NullString{},  // upstream_model
-			sql.NullString{},  // upstream_response_model
-			sql.NullBool{},    // upstream_model_mismatch
-			sql.NullInt64{},   // group_id
-			sql.NullInt64{},   // subscription_id
-			1,                 // input_tokens
-			2,                 // output_tokens
-			3,                 // cache_creation_tokens
-			4,                 // cache_read_tokens
-			5,                 // cache_creation_5m_tokens
-			6,                 // cache_creation_1h_tokens
+			sql.NullString{},                      // upstream_model
+			sql.NullString{},                      // upstream_response_model
+			sql.NullBool{},                        // upstream_model_mismatch
+			sql.NullInt64{},                       // group_id
+			sql.NullInt64{},                       // subscription_id
+			1,                                     // input_tokens
+			2,                                     // output_tokens
+			3,                                     // cache_creation_tokens
+			4,                                     // cache_read_tokens
+			5,                                     // cache_creation_5m_tokens
+			6,                                     // cache_creation_1h_tokens
+			sql.NullInt64{Valid: true, Int64: 10}, // billable_input_tokens
+			sql.NullInt64{Valid: true, Int64: 20}, // billable_output_tokens
+			sql.NullInt64{Valid: true, Int64: 30}, // billable_cache_creation_tokens
+			sql.NullInt64{Valid: true, Int64: 40}, // billable_cache_read_tokens
+			sql.NullFloat64{Valid: true, Float64: 10}, // input_token_multiplier
+			sql.NullFloat64{Valid: true, Float64: 10}, // output_token_multiplier
+			sql.NullFloat64{Valid: true, Float64: 10}, // cache_creation_token_multiplier
+			sql.NullFloat64{Valid: true, Float64: 10}, // cache_read_token_multiplier
 			0,                 // image_output_tokens
 			0.0,               // image_output_cost
 			0,                 // image_input_tokens
@@ -1040,6 +1072,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -1048,6 +1082,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, service.RequestTypeWSV2, log.RequestType)
 		require.True(t, log.Stream)
 		require.True(t, log.OpenAIWSMode)
+		require.Equal(t, service.UsageTokens{InputTokens: 10, OutputTokens: 20, CacheCreationTokens: 30, CacheReadTokens: 40}, log.BillableTokens())
+		require.Equal(t, 10.0, *log.InputTokenMultiplier)
 	})
 
 	t.Run("request_type_unknown_falls_back_to_legacy", func(t *testing.T) {
@@ -1066,6 +1102,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullInt64{},
 			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,
+			sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
+			sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{},
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
@@ -1103,6 +1141,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			true,              // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)
@@ -1112,6 +1152,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.True(t, log.Stream)
 		require.False(t, log.OpenAIWSMode)
 		require.True(t, log.NativeCompactionV2)
+		require.Equal(t, service.UsageTokens{InputTokens: 1, OutputTokens: 2, CacheCreationTokens: 3, CacheReadTokens: 4}, log.BillableTokens())
+		require.Nil(t, log.InputTokenMultiplier)
 	})
 
 	t.Run("service_tier_is_scanned", func(t *testing.T) {
@@ -1130,6 +1172,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullInt64{},
 			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,
+			sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
+			sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{},
 			0, 0.0, // image_output_tokens, image_output_cost
 			0, 0.0, // image_input_tokens, image_input_cost
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
@@ -1167,6 +1211,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
+			0,                 // cache_creation_30m_tokens
+			0,                 // cache_creation_12h_tokens
 			now,
 		}})
 		require.NoError(t, err)

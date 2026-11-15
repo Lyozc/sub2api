@@ -1,0 +1,63 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+)
+
+// VideoStudioKeyName 视频工作台专用密钥的名称标记。
+// 每个视频分组(grok/composite/kling)各一把,名字相同、按绑定分组区分。
+const VideoStudioKeyName = "视频工作台"
+
+// ErrVideoStudioNoVideoGroup 用户没有可用的视频分组,无法自动创建工作台密钥。
+var ErrVideoStudioNoVideoGroup = errors.New("没有可用的视频分组(需要 grok/composite/kling 平台且开启图片生成权限的分组),请联系管理员")
+
+// ErrVideoStudioGroupNotFound 请求的分组不在用户可用视频分组内。
+var ErrVideoStudioGroupNotFound = errors.New("分组不存在或未开启视频权限")
+
+// VideoStudioGroups 返回用户可用的视频分组(开启生图权限且平台为 grok/composite/kling),
+// 每个分组将各有一把工作台密钥。
+func (s *APIKeyService) VideoStudioGroups(ctx context.Context, userID int64) ([]Group, error) {
+	groups, err := s.GetAvailableGroups(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list available groups: %w", err)
+	}
+	out := make([]Group, 0, len(groups))
+	for i := range groups {
+		g := &groups[i]
+		if !g.AllowImageGeneration {
+			continue
+		}
+		if g.Platform != PlatformGrok && g.Platform != PlatformComposite && g.Platform != PlatformKling {
+			continue
+		}
+		out = append(out, *g)
+	}
+	if len(out) == 0 {
+		return nil, ErrVideoStudioNoVideoGroup
+	}
+	return out, nil
+}
+
+// EnsureVideoStudioKeyForGroup 返回指定视频分组的工作台密钥,不存在时自动创建。
+// 查找规则:用户名下活跃密钥中名称等于 VideoStudioKeyName 且当前绑定该分组的最新一把。
+func (s *APIKeyService) EnsureVideoStudioKeyForGroup(ctx context.Context, userID int64, groupID int64) (*APIKey, error) {
+	muAny, _ := studioKeyMu.LoadOrStore(userID, &sync.Mutex{})
+	mu, ok := muAny.(*sync.Mutex)
+	if !ok || mu == nil {
+		return nil, fmt.Errorf("invalid studio key lock for user %d", userID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	existing, err := s.findStudioKeyForGroup(ctx, userID, groupID, VideoStudioKeyName)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+	return s.Create(ctx, userID, CreateAPIKeyRequest{Name: VideoStudioKeyName, GroupID: &groupID})
+}

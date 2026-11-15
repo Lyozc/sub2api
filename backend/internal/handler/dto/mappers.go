@@ -178,12 +178,19 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 }
 
 func groupFromServiceBase(g *service.Group) Group {
+	tokenMultipliers := g.EffectiveTokenMultipliers()
 	return Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     g.Description,
+		I18n:                            g.I18n,
 		Platform:                        g.Platform,
 		RateMultiplier:                  g.RateMultiplier,
+		InputTokenMultiplier:            tokenMultipliers.Input,
+		OutputTokenMultiplier:           tokenMultipliers.Output,
+		CacheCreationTokenMultiplier:    tokenMultipliers.CacheCreation,
+		CacheReadTokenMultiplier:        tokenMultipliers.CacheRead,
+		ReturnBillableUsage:             g.ReturnBillableUsage,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		SubscriptionType:                g.SubscriptionType,
@@ -193,6 +200,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		LongContextPricingEnabled:       g.LongContextPricingEnabled,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
+		ImageCountBilling:               g.ImageCountBilling,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
@@ -241,6 +249,10 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	if state := service.OllamaCloudUsageStateFromAccount(a); state.Eligible {
 		ollamaCloudUsage = state
 	}
+	var openCodeGoUsage *service.OpenCodeGoUsageState
+	if state := service.OpenCodeGoUsageStateFromAccount(a); state.Eligible {
+		openCodeGoUsage = state
+	}
 	out := &Account{
 		ID:                      a.ID,
 		Name:                    a.Name,
@@ -251,6 +263,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		CredentialsStatus:       credsStatus,
 		Extra:                   extra,
 		OllamaCloudUsage:        ollamaCloudUsage,
+		OpenCodeGoUsage:         openCodeGoUsage,
 		ProxyID:                 a.ProxyID,
 		ProxyFallbackOriginID:   a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName: a.ProxyFallbackOriginName,
@@ -335,8 +348,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
-	// 提取账号配额限制（apikey / bedrock 类型有效）
-	if a.IsAPIKeyOrBedrock() {
+	// 提取账号配额限制（apikey / bedrock / service_account 类型有效）
+	if a.SupportsAccountQuota() {
 		if limit := a.GetQuotaLimit(); limit > 0 {
 			out.QuotaLimit = &limit
 			used := a.GetQuotaUsed()
@@ -417,7 +430,9 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 		switch key {
 		case service.OllamaCloudUsageSessionExtraKey,
 			service.OllamaCloudUsageAutoRefreshExtraKey,
-			service.OllamaCloudUsageSnapshotExtraKey:
+			service.OllamaCloudUsageSnapshotExtraKey,
+			service.OpenCodeGoUsageAutoRefreshExtraKey,
+			service.OpenCodeGoUsageSnapshotExtraKey:
 			continue
 		default:
 			redacted[key] = value
@@ -458,8 +473,8 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 	return &AccountListItem{
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
-		OllamaCloudUsage: a.OllamaCloudUsage,
-		ProxyID:          a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		OllamaCloudUsage: a.OllamaCloudUsage, OpenCodeGoUsage: a.OpenCodeGoUsage,
+		ProxyID: a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
 		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier,
 		Status: a.Status, ErrorMessage: a.ErrorMessage, LastUsedAt: a.LastUsedAt, ExpiresAt: a.ExpiresAt,
 		AutoPauseOnExpired: a.AutoPauseOnExpired, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
@@ -678,6 +693,19 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、account、upstream_model）。
 	requestType := l.EffectiveRequestType()
 	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
+	billable := l.BillableTokens()
+	billableDetails := service.ApplyTokenMultipliers(service.UsageTokens{
+		InputTokens:            l.InputTokens,
+		OutputTokens:           l.OutputTokens,
+		CacheCreationTokens:    l.CacheCreationTokens,
+		CacheReadTokens:        l.CacheReadTokens,
+		CacheCreation5mTokens:  l.CacheCreation5mTokens,
+		CacheCreation1hTokens:  l.CacheCreation1hTokens,
+		CacheCreation30mTokens: l.CacheCreation30mTokens,
+		CacheCreation12hTokens: l.CacheCreation12hTokens,
+		ImageInputTokens:       l.ImageInputTokens,
+		ImageOutputTokens:      l.ImageOutputTokens,
+	}, l.EffectiveTokenMultipliers())
 	requestedModel := l.RequestedModel
 	if requestedModel == "" {
 		requestedModel = l.Model
@@ -694,12 +722,14 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		InboundEndpoint:           l.InboundEndpoint,
 		GroupID:                   l.GroupID,
 		SubscriptionID:            l.SubscriptionID,
-		InputTokens:               l.InputTokens,
-		OutputTokens:              l.OutputTokens,
-		CacheCreationTokens:       l.CacheCreationTokens,
-		CacheReadTokens:           l.CacheReadTokens,
-		CacheCreation5mTokens:     l.CacheCreation5mTokens,
-		CacheCreation1hTokens:     l.CacheCreation1hTokens,
+		InputTokens:               billable.InputTokens,
+		OutputTokens:              billable.OutputTokens,
+		CacheCreationTokens:       billable.CacheCreationTokens,
+		CacheReadTokens:           billable.CacheReadTokens,
+		CacheCreation5mTokens:     billableDetails.CacheCreation5mTokens,
+		CacheCreation1hTokens:     billableDetails.CacheCreation1hTokens,
+		CacheCreation30mTokens:    billableDetails.CacheCreation30mTokens,
+		CacheCreation12hTokens:    billableDetails.CacheCreation12hTokens,
 		InputCost:                 l.InputCost,
 		OutputCost:                l.OutputCost,
 		CacheCreationCost:         l.CacheCreationCost,
@@ -719,9 +749,9 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ImageSize:                 l.ImageSize,
 		ImageInputSize:            l.ImageInputSize,
 		ImageOutputSize:           l.ImageOutputSize,
-		ImageInputTokens:          l.ImageInputTokens,
+		ImageInputTokens:          billableDetails.ImageInputTokens,
 		ImageInputCost:            l.ImageInputCost,
-		ImageOutputTokens:         l.ImageOutputTokens,
+		ImageOutputTokens:         billableDetails.ImageOutputTokens,
 		ImageOutputCost:           l.ImageOutputCost,
 		ImageSizeSource:           l.ImageSizeSource,
 		ImageSizeBreakdown:        l.ImageSizeBreakdown,
@@ -739,6 +769,30 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	}
 }
 
+// scaleUserCostsByBillableRatio 将用户侧分项费用按"计费 Token ÷ 原始 Token"的
+// 精确比例分摊:计费 Token 的整数取整误差摊入 token 数而非单价,保证
+// "计费 Token × 单价 = 分项费用"与费用明细、用户扣费严格自洽。
+// 历史行无计费快照时计费 = 原始,比例恒为 1,数值不变。
+func scaleUserCostsByBillableRatio(u *UsageLog, raw service.UsageTokens, billable service.UsageTokens) {
+	scale := func(rawTokens, billedTokens int, cost float64) float64 {
+		if rawTokens <= 0 {
+			// 无 token 样本(如合成记录)无从按比例分摊,费用原样保留
+			return cost
+		}
+		if billedTokens <= 0 {
+			// 计费 Token 为 0 = 该类未计费
+			return 0
+		}
+		return cost * float64(billedTokens) / float64(rawTokens)
+	}
+	u.InputCost = scale(raw.InputTokens, billable.InputTokens, u.InputCost)
+	u.OutputCost = scale(raw.OutputTokens, billable.OutputTokens, u.OutputCost)
+	u.CacheCreationCost = scale(raw.CacheCreationTokens, billable.CacheCreationTokens, u.CacheCreationCost)
+	u.CacheReadCost = scale(raw.CacheReadTokens, billable.CacheReadTokens, u.CacheReadCost)
+	u.ImageInputCost = scale(raw.ImageInputTokens, billable.ImageInputTokens, u.ImageInputCost)
+	u.ImageOutputCost = scale(raw.ImageOutputTokens, billable.ImageOutputTokens, u.ImageOutputCost)
+}
+
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
 // It excludes admin-only account/upstream internals while keeping user billing and request metadata.
 func UsageLogFromService(l *service.UsageLog) *UsageLog {
@@ -746,6 +800,20 @@ func UsageLogFromService(l *service.UsageLog) *UsageLog {
 		return nil
 	}
 	u := usageLogFromServiceUser(l)
+	// 用户侧分项费用按计费口径返回(见 scaleUserCostsByBillableRatio)。
+	rawTokens := service.UsageTokens{
+		InputTokens:           l.InputTokens,
+		OutputTokens:          l.OutputTokens,
+		CacheCreationTokens:   l.CacheCreationTokens,
+		CacheReadTokens:       l.CacheReadTokens,
+		CacheCreation5mTokens: l.CacheCreation5mTokens,
+		CacheCreation1hTokens: l.CacheCreation1hTokens,
+		ImageInputTokens:      l.ImageInputTokens,
+		ImageOutputTokens:     l.ImageOutputTokens,
+	}
+	scaleUserCostsByBillableRatio(&u, rawTokens, l.BillableTokens())
+	// 用户侧不暴露税前成本:total_cost 与实扣同口径,避免倍率被反推
+	u.TotalCost = u.ActualCost
 	return &u
 }
 
@@ -758,19 +826,29 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usageLog := usageLogFromServiceUser(l)
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
-		UsageLog:                usageLog,
-		UpstreamModel:           l.UpstreamModel,
-		UpstreamReasoningEffort: adminUpstreamReasoningEffort(l),
-		UpstreamResponseModel:   l.UpstreamResponseModel,
-		UpstreamModelMismatch:   l.UpstreamModelMismatch,
-		ChannelID:               l.ChannelID,
-		ModelMappingChain:       l.ModelMappingChain,
-		UpstreamRequestID:       l.UpstreamRequestID,
-		BillingTier:             l.BillingTier,
-		AccountRateMultiplier:   l.AccountRateMultiplier,
-		AccountStatsCost:        l.AccountStatsCost,
-		IPAddress:               l.IPAddress,
-		Account:                 AccountSummaryFromService(l.Account),
+		UsageLog:                     usageLog,
+		RawInputTokens:               l.InputTokens,
+		RawOutputTokens:              l.OutputTokens,
+		RawCacheCreationTokens:       l.CacheCreationTokens,
+		RawCacheReadTokens:           l.CacheReadTokens,
+		RawImageInputTokens:          l.ImageInputTokens,
+		RawImageOutputTokens:         l.ImageOutputTokens,
+		InputTokenMultiplier:         l.InputTokenMultiplier,
+		OutputTokenMultiplier:        l.OutputTokenMultiplier,
+		CacheCreationTokenMultiplier: l.CacheCreationTokenMultiplier,
+		CacheReadTokenMultiplier:     l.CacheReadTokenMultiplier,
+		UpstreamModel:                l.UpstreamModel,
+		UpstreamReasoningEffort:      adminUpstreamReasoningEffort(l),
+		UpstreamResponseModel:        l.UpstreamResponseModel,
+		UpstreamModelMismatch:        l.UpstreamModelMismatch,
+		ChannelID:                    l.ChannelID,
+		ModelMappingChain:            l.ModelMappingChain,
+		UpstreamRequestID:            l.UpstreamRequestID,
+		BillingTier:                  l.BillingTier,
+		AccountRateMultiplier:        l.AccountRateMultiplier,
+		AccountStatsCost:             l.AccountStatsCost,
+		IPAddress:                    l.IPAddress,
+		Account:                      AccountSummaryFromService(l.Account),
 	}
 }
 

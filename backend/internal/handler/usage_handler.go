@@ -254,7 +254,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -400,7 +400,7 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record))
+	response.Success(c, dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Stats handles getting usage statistics
@@ -419,6 +419,8 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	stats.TotalAccountCost = nil
 	stats.UpstreamEndpoints = nil
 	stats.EndpointPaths = nil
+	// 用户侧不暴露税前成本:总消费与实扣同口径
+	stats.TotalCost = stats.TotalActualCost
 
 	response.Success(c, stats)
 }

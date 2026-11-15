@@ -30,8 +30,20 @@ type Group struct {
 	Name string `json:"name,omitempty"`
 	// Description holds the value of the "description" field.
 	Description *string `json:"description,omitempty"`
+	// 名称与描述的界面语言译文：语言代码 -> {name, description}；缺失的语言沿用 name/description
+	I18n domain.GroupI18n `json:"i18n,omitempty"`
 	// RateMultiplier holds the value of the "rate_multiplier" field.
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
+	// 输入 Token 计费倍率；仅影响计费 Token，0 表示该类 Token 免费
+	InputTokenMultiplier float64 `json:"input_token_multiplier,omitempty"`
+	// 输出 Token 计费倍率；仅影响计费 Token，0 表示该类 Token 免费
+	OutputTokenMultiplier float64 `json:"output_token_multiplier,omitempty"`
+	// 缓存创建 Token 计费倍率；同时作用于 5m 和 1h 缓存创建 Token
+	CacheCreationTokenMultiplier float64 `json:"cache_creation_token_multiplier,omitempty"`
+	// 缓存读取 Token 计费倍率；0 表示该类 Token 免费
+	CacheReadTokenMultiplier float64 `json:"cache_read_token_multiplier,omitempty"`
+	// 是否向下游 API 响应返回计费 Token；关闭时返回上游真实 Token
+	ReturnBillableUsage bool `json:"return_billable_usage,omitempty"`
 	// 是否启用高峰时段倍率
 	PeakRateEnabled bool `json:"peak_rate_enabled,omitempty"`
 	// 高峰开始时间 HH:MM（含），如 14:00；空表示未配置；不支持跨天
@@ -62,6 +74,8 @@ type Group struct {
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// 是否允许该分组使用批量图片生成能力
 	AllowBatchImageGeneration bool `json:"allow_batch_image_generation,omitempty"`
+	// 图片生成是否按实际出图张数计费
+	ImageCountBilling bool `json:"image_count_billing,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
 	// 图片生成独立倍率，仅 image_rate_independent=true 时生效
@@ -258,11 +272,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
+		case group.FieldI18n, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldReturnBillableUsage, group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldInputTokenMultiplier, group.FieldOutputTokenMultiplier, group.FieldCacheCreationTokenMultiplier, group.FieldCacheReadTokenMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -323,11 +337,49 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.Description = new(string)
 				*_m.Description = value.String
 			}
+		case group.FieldI18n:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field i18n", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.I18n); err != nil {
+					return fmt.Errorf("unmarshal field i18n: %w", err)
+				}
+			}
 		case group.FieldRateMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field rate_multiplier", values[i])
 			} else if value.Valid {
 				_m.RateMultiplier = value.Float64
+			}
+		case group.FieldInputTokenMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field input_token_multiplier", values[i])
+			} else if value.Valid {
+				_m.InputTokenMultiplier = value.Float64
+			}
+		case group.FieldOutputTokenMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field output_token_multiplier", values[i])
+			} else if value.Valid {
+				_m.OutputTokenMultiplier = value.Float64
+			}
+		case group.FieldCacheCreationTokenMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_creation_token_multiplier", values[i])
+			} else if value.Valid {
+				_m.CacheCreationTokenMultiplier = value.Float64
+			}
+		case group.FieldCacheReadTokenMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_read_token_multiplier", values[i])
+			} else if value.Valid {
+				_m.CacheReadTokenMultiplier = value.Float64
+			}
+		case group.FieldReturnBillableUsage:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field return_billable_usage", values[i])
+			} else if value.Valid {
+				_m.ReturnBillableUsage = value.Bool
 			}
 		case group.FieldPeakRateEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -422,6 +474,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_batch_image_generation", values[i])
 			} else if value.Valid {
 				_m.AllowBatchImageGeneration = value.Bool
+			}
+		case group.FieldImageCountBilling:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_count_billing", values[i])
+			} else if value.Valid {
+				_m.ImageCountBilling = value.Bool
 			}
 		case group.FieldImageRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -817,8 +875,26 @@ func (_m *Group) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	builder.WriteString("i18n=")
+	builder.WriteString(fmt.Sprintf("%v", _m.I18n))
+	builder.WriteString(", ")
 	builder.WriteString("rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("input_token_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.InputTokenMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("output_token_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OutputTokenMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("cache_creation_token_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheCreationTokenMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("cache_read_token_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheReadTokenMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("return_billable_usage=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReturnBillableUsage))
 	builder.WriteString(", ")
 	builder.WriteString("peak_rate_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PeakRateEnabled))
@@ -872,6 +948,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_batch_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBatchImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("image_count_billing=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageCountBilling))
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_independent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateIndependent))
