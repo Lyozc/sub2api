@@ -174,4 +174,23 @@ describe('video submission acknowledgement recovery', () => {
     await vi.advanceTimersByTimeAsync(60000)
     expect(fetcher).toHaveBeenCalledTimes(calls)
   })
+  it('shows an uncertain upstream task without treating it as terminal failure or resubmitting', async () => {
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) => options?.method === 'POST'
+      ? reply({ id: 'original-job' })
+      : reply({ status: 'submission_unknown', error: { message: 'Official submission needs reconciliation' } }))
+    vi.stubGlobal('fetch', fetcher)
+    const engine = await import('../useVideoStudioEngine')
+    engine.prompt.value = 'one generation'
+    const [task] = engine.submitBatch()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(task.status).toBe('failed')
+    expect(task.remoteId).toBe('original-job')
+    expect(task.submissionUnconfirmed).toBe(true)
+    expect(task.upstreamFailed).not.toBe(true)
+    expect(task.error).toContain('Official submission needs reconciliation')
+    engine.retryTask(task.taskId)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
+
 })

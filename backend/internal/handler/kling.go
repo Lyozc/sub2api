@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -123,6 +125,14 @@ func (h *OpenAIGatewayHandler) handleKlingResponse(c *gin.Context, endpoint serv
 		defer selection.ReleaseFunc()
 	}
 	account := selection.Account
+	if !strings.HasPrefix(string(endpoint), "query") {
+		if key := c.GetHeader("Idempotency-Key"); key != "" {
+			// Multiple gateway users may share one relay credential. Scope their
+			// caller-provided keys before crossing that credential boundary.
+			hash := sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%s", apiKey.ID, account.ID, key)))
+			ctx = service.WithKlingSubmissionKey(ctx, fmt.Sprintf("sub2api-%x", hash))
+		}
+	}
 	responseContext := c
 	if responseMode != "" {
 		responseContext = nil

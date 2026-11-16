@@ -102,10 +102,10 @@ func TestBuildKlingStudioRequestParameters(t *testing.T) {
 }
 
 func TestKlingStudioTaskStatus(t *testing.T) {
-	for upstream, want := range map[string]string{"submitted": "pending", "processing": "processing", "succeed": "completed", "succeeded": "completed", "failed": "failed"} {
+	for upstream, want := range map[string]string{"submitted": "pending", "processing": "processing", "succeed": "completed", "succeeded": "completed", "failed": "failed", "submission_unknown": "submission_unknown"} {
 		got := KlingStudioResponse(KlingEndpointQueryVideo, &KlingTaskResult{TaskID: "123", Status: upstream, Message: "reason"})
 		require.Equal(t, want, got["status"])
-		if want == "failed" {
+		if want == "failed" || want == "submission_unknown" {
 			errResponse, ok := got["error"].(gin.H)
 			require.True(t, ok)
 			require.Equal(t, "reason", errResponse["message"])

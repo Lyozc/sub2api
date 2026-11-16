@@ -20,6 +20,14 @@ import (
 // KlingEndpoint identifies one official-compatible Kling operation.
 type KlingEndpoint string
 
+type klingSubmissionKeyContext struct{}
+
+// WithKlingSubmissionKey carries the gateway-scoped key to the local relay.
+// It intentionally keeps the compatible synchronous acknowledgement protocol.
+func WithKlingSubmissionKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, klingSubmissionKeyContext{}, key)
+}
+
 const (
 	KlingEndpointText2Video           KlingEndpoint = "text2video"
 	KlingEndpointImage2Video          KlingEndpoint = "image2video"
@@ -231,6 +239,9 @@ func (s *OpenAIGatewayService) ForwardKling(ctx context.Context, c *gin.Context,
 	req.Header.Set("Accept", "application/json")
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/json")
+		if key, ok := ctx.Value(klingSubmissionKeyContext{}).(string); ok && key != "" {
+			req.Header.Set("Idempotency-Key", key)
+		}
 	}
 	account.ApplyHeaderOverrides(req.Header)
 	var resp *http.Response

@@ -190,9 +190,11 @@ func KlingStudioResponse(endpoint KlingEndpoint, result *KlingTaskResult) gin.H 
 		status, progress = "completed", 100
 	case "failed":
 		status = "failed"
+	case "submission_unknown":
+		status = "submission_unknown"
 	}
 	out := gin.H{"id": KlingStudioTaskID(endpoint, result.TaskID), "status": status, "progress": progress}
-	if status == "failed" {
+	if status == "failed" || status == "submission_unknown" {
 		out["error"] = gin.H{"message": firstNonEmpty(result.Message, "Kling video generation failed")}
 	}
 	return out

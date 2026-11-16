@@ -690,6 +690,12 @@ async function runTask(task: VideoTask) {
         if (pollErrors >= MAX_POLL_ERRORS) throw pollErr
         continue
       }
+      if (statusRaw.status === 'submission_unknown' || statusRaw.state === 'submission_unknown') {
+        task.submissionUnconfirmed = true
+        const raw = statusRaw.error
+        throw new Error(typeof raw === 'string' ? raw : raw?.message || t('videoStudio.submissionUnknown'))
+      }
+      task.submissionUnconfirmed = false
       if (phase === 'done') {
         // 视频已生成并计费:下载失败只影响取片,不把上游任务整个判死
         task.upstreamDone = true
