@@ -126,6 +126,55 @@ describe('studio chat workflow', () => {
     expect(engine.activeChat.value!.messages).toHaveLength(0)
     expect(engine.chatConversations.value.find(row => row.id === id)!.messages[1]).toMatchObject({ content: 'Original reply', model: 'chat-model' })
   })
+  it('runs replies for different conversations concurrently', async () => {
+    const first = deferred<Response>(), second = deferred<Response>()
+    let request = 0
+    vi.mocked(fetch).mockImplementation(() => (++request === 1 ? first.promise : second.promise) as Promise<Response>)
+    const engine = await import('../useStudioChat'); await engine.initStudioChat()
+    const firstConversation = engine.activeChat.value!
+    firstConversation.draft = 'First'
+    const firstSending = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+
+    engine.newChat()
+    const secondConversation = engine.activeChat.value!
+    secondConversation.draft = 'Second'
+    const secondSending = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    expect(engine.chatBusy.value).toBe(true)
+    expect(engine.chatRunningIds.value).toEqual(expect.arrayContaining([firstConversation.id, secondConversation.id]))
+
+    second.resolve(jsonReply('Reply two')); first.resolve(jsonReply('Reply one'))
+    await Promise.all([firstSending, secondSending])
+    expect(firstConversation.messages.at(-1)).toMatchObject({ content: 'Reply one', status: 'done' })
+    expect(secondConversation.messages.at(-1)).toMatchObject({ content: 'Reply two', status: 'done' })
+    expect(engine.chatBusy.value).toBe(false)
+  })
+  it('stops only the selected conversation while another reply continues', async () => {
+    const second = deferred<Response>()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(delta('Partial first')))
+    } }), { headers: { 'content-type': 'text/event-stream' } })).mockReturnValueOnce(second.promise)
+    const engine = await import('../useStudioChat'); await engine.initStudioChat()
+    const firstConversation = engine.activeChat.value!
+    firstConversation.draft = 'First'; const firstSending = engine.sendChat()
+    await vi.waitFor(() => expect(firstConversation.messages.at(-1)?.content).toBe('Partial first'))
+    // A second submission in the same conversation must still be rejected.
+    firstConversation.draft = 'Duplicate'; await engine.sendChat()
+    expect(fetch).toHaveBeenCalledOnce()
+
+    engine.newChat(); const secondConversation = engine.activeChat.value!
+    secondConversation.draft = 'Second'; const secondSending = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    engine.selectChat(firstConversation.id); engine.stopChat(); await firstSending
+    expect(firstConversation.messages.at(-1)).toMatchObject({ content: 'Partial first', status: 'stopped' })
+    expect(engine.chatActiveBusy.value).toBe(false)
+    expect(engine.isChatRunning(secondConversation.id)).toBe(true)
+
+    second.resolve(jsonReply('Second completed')); await secondSending
+    expect(secondConversation.messages.at(-1)).toMatchObject({ content: 'Second completed', status: 'done' })
+    expect(engine.chatBusy.value).toBe(false)
+  })
   it('stops streaming and retains partial text across a reload', async () => {
     const engine = await import('../useStudioChat'); await engine.initStudioChat()
     vi.mocked(fetch).mockResolvedValue(new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(delta('Partial reply'))) } }), { headers: { 'content-type': 'text/event-stream' } }))

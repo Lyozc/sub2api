@@ -17,15 +17,28 @@ export const chatOptionsLoading = ref(false)
 export const chatOptionsError = ref('')
 export const chatStorageError = ref('')
 export const chatReady = ref(false)
-export const chatRunningId = ref('')
+const runningConversationIds = ref<Set<string>>(new Set())
+/** True when at least one conversation is receiving a reply. */
+export const chatBusy = computed(() => runningConversationIds.value.size > 0)
+/** True when the currently selected conversation is receiving a reply. */
+export const chatActiveBusy = computed(() => runningConversationIds.value.has(chatActiveId.value))
+export const chatRunningIds = computed(() => [...runningConversationIds.value])
+/** Kept for the history/background indicator API; use chatRunningIds for all active runs. */
+export const chatRunningId = computed(() => chatRunningIds.value[0] || '')
 export const activeChat = computed(() => chatConversations.value.find(row => row.id === chatActiveId.value))
 export const sortedChats = computed(() => [...chatConversations.value].sort((a, b) => b.updatedAt - a.updatedAt))
-export const chatBusy = computed(() => Boolean(chatRunningId.value))
-let epoch = 0, owner = '', optionSequence = 0, controller: AbortController | undefined
+let epoch = 0, owner = '', optionSequence = 0
 let initializing: Promise<void> | undefined
 let persistence = Promise.resolve()
-let stopped = false
 const removed = new Set<string>()
+const controllers = new Map<string, AbortController>()
+const stoppedConversations = new Set<string>()
+function setRunning(id: string, running: boolean) {
+  const next = new Set(runningConversationIds.value)
+  if (running) next.add(id); else next.delete(id)
+  runningConversationIds.value = next
+}
+export function isChatRunning(id: string) { return runningConversationIds.value.has(id) }
 function snapshot() { const account = sessionOwnerKey(), version = epoch; return { account, current: () => account === sessionOwnerKey() && version === epoch } }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error) }
 
@@ -116,12 +129,16 @@ export function newChat() {
   chatConversations.value.push(conversation); chatActiveId.value = conversation.id
 }
 export function selectChat(id: string) { if (chatConversations.value.some(row => row.id === id)) chatActiveId.value = id }
-export function stopChat() { stopped = true; controller?.abort() }
+export function stopChat(id = chatActiveId.value) {
+  if (!id || !runningConversationIds.value.has(id)) return
+  stoppedConversations.add(id)
+  controllers.get(id)?.abort()
+}
 export async function deleteChat(id: string) {
   const state = snapshot()
   const conversation = chatConversations.value.find(row => row.id === id)
   if (!conversation) return
-  if (chatRunningId.value === id) stopChat()
+  if (isChatRunning(id)) stopChat(id)
   removed.add(id)
   if (!await persist(conversation, true)) { removed.delete(id); return }
   if (!state.current()) return
@@ -147,7 +164,7 @@ export async function retryChatSave() {
 
 export async function sendChat(retry = false) {
   const conversation = activeChat.value, selected = chatKeys.value.find(key => key.id === chatKeyId.value)
-  if (!conversation || !chatReady.value || chatBusy.value || chatStorageError.value || chatOptionsLoading.value || !selected || !chatModels.value.includes(chatModel.value)) return
+  if (!conversation || !chatReady.value || isChatRunning(conversation.id) || chatStorageError.value || chatOptionsLoading.value || !selected || !chatModels.value.includes(chatModel.value)) return
   const state = snapshot(), model = chatModel.value
   const last = conversation.messages.at(-1)
   if (retry && (!last || last.role !== 'assistant' || !['failed', 'stopped'].includes(last.status))) return
@@ -168,8 +185,11 @@ export async function sendChat(retry = false) {
   if (!conversation.title) conversation.title = prompt.slice(0, 48)
   conversation.updatedAt = Date.now()
   if (!retry) conversation.draft = ''
-  chatRunningId.value = conversation.id; stopped = false; chatOptionsError.value = ''
-  const requestController = new AbortController(); controller = requestController
+  stoppedConversations.delete(conversation.id)
+  chatOptionsError.value = ''
+  const requestController = new AbortController()
+  controllers.set(conversation.id, requestController)
+  setRunning(conversation.id, true)
   let timedOut = false
   const timeout = window.setTimeout(() => { timedOut = true; requestController.abort() }, 300000)
   try {
@@ -192,21 +212,25 @@ export async function sendChat(retry = false) {
     }
   } catch (error) {
     if (!state.current() || removed.has(conversation.id)) return
-    responseMessage.status = stopped && !timedOut ? 'stopped' : 'failed'
+    responseMessage.status = stoppedConversations.has(conversation.id) && !timedOut ? 'stopped' : 'failed'
     if (responseMessage.status === 'failed') responseMessage.error = timedOut ? t('studioChat.timeout') : errorMessage(error)
   } finally {
     window.clearTimeout(timeout)
     if (state.current()) {
       if (!removed.has(conversation.id)) await persist(conversation)
-      if (controller === requestController) { controller = undefined; chatRunningId.value = '' }
+      controllers.delete(conversation.id)
+      stoppedConversations.delete(conversation.id)
+      setRunning(conversation.id, false)
     }
   }
 }
 export function resetStudioChat() {
-  epoch++; optionSequence++; controller?.abort(); controller = undefined; initializing = undefined
+  epoch++; optionSequence++
+  for (const requestController of controllers.values()) requestController.abort()
+  controllers.clear(); initializing = undefined
   chatConversations.value = []; chatActiveId.value = ''; chatKeys.value = []; chatKeyId.value = null
-  chatModels.value = []; chatModel.value = ''; chatRunningId.value = ''; chatReady.value = false
+  chatModels.value = []; chatModel.value = ''; runningConversationIds.value = new Set(); chatReady.value = false
   chatOptionsLoading.value = false; chatOptionsError.value = ''; chatStorageError.value = ''
-  owner = ''; removed.clear(); persistence = Promise.resolve()
+  owner = ''; removed.clear(); stoppedConversations.clear(); persistence = Promise.resolve()
 }
 window.addEventListener('studio-session-ended', resetStudioChat)

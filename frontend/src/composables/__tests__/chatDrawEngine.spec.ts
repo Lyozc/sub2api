@@ -392,6 +392,102 @@ describe('chat draw engine sessions', () => {
     expect(e.turns.value[0].images[0].status).toBe('done')
   })
 
+  it('generates in two conversations concurrently and persists each result in its own conversation', async () => {
+    const e = await import('../useChatDrawEngine')
+    await e.initChatDraw()
+    const first = deferred<void>(), second = deferred<void>()
+    const fetchMock = okFetch([first.promise, second.promise])
+    vi.stubGlobal('fetch', fetchMock)
+    const a = e.activeSessionId.value
+    e.draftText.value = 'first conversation'
+    const sendingA = e.sendDraft()
+    const b = e.newSession()
+    e.draftText.value = 'second conversation'
+    const sendingB = e.sendDraft()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(e.runningSessionIds.value).toEqual(new Set([a, b]))
+
+    second.resolve()
+    await sendingB
+    expect(e.turns.value.map(turn => [turn.prompt, turn.status])).toEqual([['second conversation', 'done']])
+    expect(e.runningSessionIds.value).toEqual(new Set([a]))
+    first.resolve()
+    await sendingA
+    await settle()
+    expect(e.activeSessionId.value).toBe(b)
+    expect(e.sessionNotices.value[a]).toBe('done')
+    await reload(e)
+    expect(e.turns.value.map(turn => [turn.prompt, turn.status])).toEqual([['second conversation', 'done']])
+    await e.selectSession(a)
+    expect(e.turns.value.map(turn => [turn.prompt, turn.status])).toEqual([['first conversation', 'done']])
+    expect(e.totalImages.value).toBe(2)
+  })
+
+  it('stops only the selected conversation while another conversation keeps generating', async () => {
+    const e = await import('../useChatDrawEngine')
+    await e.initChatDraw()
+    const first = deferred<void>(), second = deferred<void>()
+    vi.stubGlobal('fetch', okFetch([first.promise, second.promise]))
+    const a = e.activeSessionId.value
+    e.draftText.value = 'continue in background'
+    const sendingA = e.sendDraft()
+    const b = e.newSession()
+    e.draftText.value = 'stop this conversation'
+    const sendingB = e.sendDraft()
+    e.stopAll()
+    await sendingB
+    expect(e.turns.value[0].status).toBe('cancelled')
+    expect(e.runningSessionIds.value).toEqual(new Set([a]))
+    first.resolve()
+    await sendingA
+    expect(e.activeSessionId.value).toBe(b)
+    await e.selectSession(a)
+    expect(e.turns.value[0].status).toBe('done')
+  })
+
+  it('keeps polishing state per conversation and lets another conversation generate', async () => {
+    const e = await import('../useChatDrawEngine')
+    await e.initChatDraw()
+    const polish = deferred<string>()
+    h.enhance.mockImplementationOnce(() => polish.promise)
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    const a = e.activeSessionId.value
+    e.draftText.value = 'polish in background'
+    const polishingA = e.polishDraft()
+    expect(e.polishing.value).toBe(true)
+    e.newSession()
+    expect(e.polishing.value).toBe(false)
+    expect(e.busy.value).toBe(false)
+    await send(e, 'generate independently')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(e.turns.value[0].status).toBe('done')
+    polish.resolve('background polished')
+    await polishingA
+    expect(e.draftText.value).toBe('')
+    await e.selectSession(a)
+    expect(e.polishing.value).toBe(false)
+    expect(e.busy.value).toBe(false)
+  })
+
+  it('does not start another image worker for a busy background conversation', async () => {
+    const e = await import('../useChatDrawEngine')
+    await e.initChatDraw()
+    const gate = deferred<void>()
+    const fetchMock = okFetch([gate.promise])
+    vi.stubGlobal('fetch', fetchMock)
+    e.draftText.value = 'only one worker for this turn'
+    const sending = e.sendDraft()
+    const backgroundTurn = e.turns.value[0]
+    e.newSession()
+    expect(e.busy.value).toBe(false)
+    await e.variantOf(backgroundTurn)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(backgroundTurn.images).toHaveLength(1)
+    gate.resolve()
+    await sending
+  })
+
   it('a deleted session does not come back after its request aborts', async () => {
     const e = await import('../useChatDrawEngine')
     await e.initChatDraw()

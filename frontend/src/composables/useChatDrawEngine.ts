@@ -169,7 +169,9 @@ export const gifFrameMs = ref(200)
 export const model = ref<string>('')
 export const modelGroupId = ref<number | null>(null)
 export const polishEnabled = ref(false)
-export const polishing = ref(false)
+const polishingRuns = ref<Record<string, number>>({})
+/** Only the selected conversation's polish request blocks its composer. */
+export const polishing = computed(() => polishingRuns.value[activeSessionId.value] !== undefined)
 /** 每秒跳动的时钟(仅在有进行中的轮次时运行) */
 const now = ref(Date.now())
 
@@ -185,7 +187,11 @@ export const runningSessionIds = computed(() => {
   }
   return out
 })
-export const busy = computed(() => !loaded.value || polishing.value || turns.value.some(x => x.status === 'running'))
+function sessionBusy(sid: string): boolean {
+  return !sessionsLoaded.value || !turnStore.value[sid] || polishingRuns.value[sid] !== undefined ||
+    turnStore.value[sid].some(turn => turn.status === 'running')
+}
+export const busy = computed(() => sessionBusy(activeSessionId.value))
 
 /** 当前会话进行中轮次已用秒数 */
 export const elapsed = computed(() => {
@@ -208,8 +214,6 @@ let initOwner = ''
 let initPromise: Promise<void> | null = null
 /** 已创建但尚未落库(未发首轮)的会话 */
 const unsavedIds = new Set<string>()
-/** 正在润色等结果的会话(引用计数),期间不可被逐出内存 */
-const pins = new Map<string, number>()
 const loadPromises = new Map<string, Promise<void>>()
 
 function appStore() {
@@ -541,7 +545,7 @@ function dropFromStore(sid: string) {
 }
 /** 会话是否必须留在内存(生成中 / 润色等结果中 / 正在读取) */
 function isPinned(sid: string): boolean {
-  return (pins.get(sid) ?? 0) > 0 || loadPromises.has(sid) ||
+  return polishingRuns.value[sid] !== undefined || loadPromises.has(sid) ||
     Boolean(turnStore.value[sid]?.some(x => x.status === 'running'))
 }
 
@@ -722,7 +726,9 @@ export async function deleteSession(sid: string) {
   bumpGen(sid)
   abortSession(sid)
   forgetControllers(sid)
-  pins.delete(sid)
+  const pendingPolish = { ...polishingRuns.value }
+  delete pendingPolish[sid]
+  polishingRuns.value = pendingPolish
   const wasUnsaved = unsavedIds.delete(sid)
   sessionRecords.value = sessionRecords.value.filter(s => s.id !== sid)
   dropFromStore(sid)
@@ -751,7 +757,7 @@ export async function clearAllSessions() {
   controllers.forEach(c => c.abort())
   controllers.clear()
   syncTicker()
-  pins.clear()
+  polishingRuns.value = {}
   unsavedIds.clear()
   sessionRecords.value = []
   turnStore.value = {}
@@ -812,13 +818,14 @@ export async function addDraftRefs(files: Blob[]): Promise<number> {
 export async function polishDraft(): Promise<void> {
   const text = draftText.value.trim()
   if (!text || polishing.value) return
-  const s = currentSession()
   const sid = activeSessionId.value
+  const run = runFor(sid)
+  if (!isLive(run)) return
   const seq = ++polishSeq
-  polishing.value = true
+  polishingRuns.value = { ...polishingRuns.value, [sid]: seq }
   try {
     const result = await aiEnhancePrompt('image', text, { keyId: aiKeyId.value ?? undefined, model: aiModel.value || undefined })
-    if (seq !== polishSeq || !isCurrent(s) || activeSessionId.value !== sid) return
+    if (polishingRuns.value[sid] !== seq || !isLive(run) || activeSessionId.value !== sid) return
     if (draftText.value.trim() === text) {
       draftText.value = result
     } else {
@@ -826,11 +833,15 @@ export async function polishDraft(): Promise<void> {
       appStore().showError(t('canvasChat.polishInputChanged'))
     }
   } catch (err) {
-    if (seq === polishSeq && isCurrent(s)) {
+    if (polishingRuns.value[sid] === seq && isLive(run)) {
       appStore().showError(`${t('canvasChat.polishFailed')}: ${err instanceof Error ? err.message : ''}`)
     }
   } finally {
-    if (seq === polishSeq) polishing.value = false
+    if (polishingRuns.value[sid] === seq) {
+      const pending = { ...polishingRuns.value }
+      delete pending[sid]
+      polishingRuns.value = pending
+    }
   }
 }
 
@@ -1227,7 +1238,7 @@ export async function sendDraft() {
 
 /** 重绘:同参数(提示词/参考图/模型/画幅/质量/张数/格式)在同一会话新开一轮 */
 export async function redrawTurn(source: ChatTurn) {
-  if (busy.value) return
+  if (sessionBusy(source.sessionId)) return
   const run = runFor(source.sessionId)
   if (!isLive(run)) return
   const turn: ChatTurn = {
@@ -1247,7 +1258,7 @@ export async function redrawTurn(source: ChatTurn) {
 
 /** 变体:沿用该轮提示词与参考图,在同一轮追加一张新图(新随机种子) */
 export async function variantOf(turn: ChatTurn) {
-  if (busy.value) return
+  if (sessionBusy(turn.sessionId)) return
   const run = runFor(turn.sessionId)
   const extra = newImages(1, 'variant')
   turn.images.push(...extra)
@@ -1256,7 +1267,7 @@ export async function variantOf(turn: ChatTurn) {
 
 /** 失败图重试:原位重新生成 */
 export async function retryImage(turn: ChatTurn, img: ChatImage) {
-  if (busy.value || img.status !== 'failed') return
+  if (sessionBusy(turn.sessionId) || img.status !== 'failed') return
   img.status = 'pending'
   img.error = undefined
   await runImages(turn.id, [img.id], runFor(turn.sessionId))
@@ -1305,6 +1316,9 @@ export async function clearConversation() {
   bumpGen(sid)
   abortSession(sid)
   forgetControllers(sid)
+  const pendingPolish = { ...polishingRuns.value }
+  delete pendingPolish[sid]
+  polishingRuns.value = pendingPolish
   const list = turnStore.value[sid] ?? []
   turnStore.value = { ...turnStore.value, [sid]: [] }
   releaseBlobs(list.flatMap(blobsOf))
@@ -1343,11 +1357,10 @@ export function resetChatDrawSession() {
   controllers.forEach(c => c.abort())
   controllers.clear()
   syncTicker()
-  pins.clear()
   unsavedIds.clear()
   loadPromises.clear()
   sessionGen.clear()
-  polishing.value = false
+  polishingRuns.value = {}
   sessionRecords.value = []
   turnStore.value = {}
   olderMap.value = {}

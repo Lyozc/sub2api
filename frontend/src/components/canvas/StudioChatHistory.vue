@@ -15,7 +15,7 @@
         <template v-else>
           <button type="button" class="chat-history-select" :aria-current="conversation.id === chatActiveId ? 'true' : undefined" @click="select(conversation.id)">
             <span>{{ conversation.title || t('studioChat.untitled') }}</span>
-            <small>{{ conversation.id === chatRunningId ? t('studioChat.replying') : formatDate(conversation.updatedAt) }}</small>
+            <small>{{ isChatRunning(conversation.id) ? t('studioChat.replying') : formatDate(conversation.updatedAt) }}</small>
           </button>
           <div class="chat-history-actions">
             <button type="button" class="studio-icon-btn" :aria-label="t('studioChat.rename')" @click="editing = conversation.id; title = conversation.title"><Icon name="edit" size="xs" /></button>
@@ -32,7 +32,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import { chatActiveId, chatReady, chatRunningId, sortedChats, newChat, selectChat, deleteChat, renameChat } from '@/composables/useStudioChat'
+import { chatActiveId, chatReady, sortedChats, newChat, selectChat, deleteChat, renameChat, isChatRunning } from '@/composables/useStudioChat'
 defineProps<{ closable?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const { t, locale } = useI18n()

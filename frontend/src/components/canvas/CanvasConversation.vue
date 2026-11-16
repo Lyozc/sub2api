@@ -13,14 +13,9 @@
         </div>
         <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm ml-auto" :disabled="!chatReady" @click="newChat"><Icon name="plus" size="xs" />{{ t('studioChat.newChat') }}</button>
       </header>
-      <div class="text-chat-options">
-        <label class="studio-label"><span>{{ t('studioChat.apiKey') }}</span><select class="studio-input--boxed" data-testid="chat-key" :value="chatKeyId ?? ''" :disabled="chatOptionsLoading" @change="selectChatKey(Number(($event.target as HTMLSelectElement).value) || null)"><option v-if="!chatKeys.length" value="">{{ t('studioChat.chooseKey') }}</option><option v-for="key in chatKeys" :key="key.id" :value="key.id">{{ key.name }}</option></select></label>
-        <label class="studio-label"><span>{{ t('studioChat.model') }}</span><select class="studio-input--boxed" data-testid="chat-model" :value="chatModel" :disabled="chatOptionsLoading || !chatModels.length" @change="selectChatModel(($event.target as HTMLSelectElement).value)"><option v-if="!chatModels.length" value="">{{ t(chatOptionsLoading ? 'studioChat.loadingModels' : 'studioChat.noModels') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select></label>
-        <button type="button" class="studio-icon-btn" :disabled="chatOptionsLoading" :aria-label="t('studioChat.refresh')" @click="refreshChatOptions"><Icon name="refresh" size="sm" /></button>
-      </div>
       <div v-if="chatOptionsError" role="alert" class="studio-alert text-chat-alert">{{ chatOptionsError }}<button type="button" class="underline" @click="refreshChatOptions">{{ t('common.retry') }}</button></div>
       <div v-if="chatStorageError" role="alert" class="studio-alert text-chat-alert"><span>{{ chatStorageError }}</span><button type="button" class="underline" :disabled="chatBusy" @click="retryChatSave">{{ t('studioChat.retrySave') }}</button><button type="button" class="underline" :disabled="chatBusy" @click="reloadHistory">{{ t('studioChat.reloadHistory') }}</button></div>
-      <div v-if="chatBusy && chatRunningId !== chatActiveId" class="text-chat-background" role="status"><span>{{ t('studioChat.backgroundReply') }}</span><button type="button" class="underline" @click="selectChat(chatRunningId)">{{ t('studioChat.viewReply') }}</button></div>
+      <div v-if="backgroundChatId" class="text-chat-background" role="status"><span>{{ t('studioChat.backgroundReply') }}</span><button type="button" class="underline" @click="selectChat(backgroundChatId)">{{ t('studioChat.viewReply') }}</button></div>
       <div ref="scroller" class="studio-scroll text-chat-messages" role="log" :aria-label="t('studioChat.messages')" aria-live="polite" @scroll="trackScroll">
         <div v-if="!chatReady && !chatStorageError" class="studio-empty" role="status"><p class="studio-note">{{ t('studioChat.loading') }}</p></div>
         <div v-else-if="!activeChat?.messages.length" class="studio-empty chat-welcome">
@@ -32,22 +27,29 @@
         <div v-else class="chat-message-list">
           <article v-for="(message, index) in activeChat.messages" :key="message.id" class="chat-message" :class="`is-${message.role}`" :data-testid="`chat-${message.role}-message`">
             <div class="chat-message-heading"><span class="chat-avatar" aria-hidden="true"><Icon :name="message.role === 'user' ? 'user' : 'sparkles'" size="xs" /></span><strong>{{ message.role === 'user' ? t('studioChat.you') : message.model || t('studioChat.assistant') }}</strong><span v-if="message.status === 'streaming'" class="chat-stream-dot" :aria-label="t('studioChat.replying')"></span></div>
-            <div v-if="message.role === 'assistant' && message.content" class="chat-markdown" v-html="renderMarkdown(message.content)"></div>
+            <div v-if="message.role === 'assistant' && message.content" v-show="!htmlPreview[message.id]" class="chat-markdown" v-html="renderMarkdown(message.content)"></div>
             <p v-else-if="message.content" class="chat-user-text">{{ message.content }}</p>
             <p v-else-if="message.status === 'streaming'" class="studio-note">{{ t('studioChat.thinking') }}</p>
             <p v-if="message.status === 'stopped'" class="chat-message-note">{{ t('studioChat.stopped') }}</p>
             <p v-if="message.status === 'failed'" class="chat-message-error" role="alert">{{ message.error || t('studioChat.requestFailed') }}</p>
             <div v-if="message.content || message.status === 'failed' || message.status === 'stopped'" class="chat-message-actions">
               <button v-if="message.content" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-label="t('studioChat.copy')" @click="copy(message.content)"><Icon name="copy" size="xs" />{{ copied === message.content ? t('studioChat.copied') : t('studioChat.copy') }}</button>
-              <button v-if="message.role === 'assistant' && ['failed', 'stopped'].includes(message.status) && index === activeChat.messages.length - 1" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="chatBusy || !!chatStorageError" @click="sendChat(true)"><Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}</button>
+              <button v-if="message.role === 'assistant' && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlPreview[message.id] === true" @click="toggleHtmlPreview(message.id)"><Icon name="eye" size="xs" />{{ htmlPreview[message.id] ? t('studioChat.showHtmlCode') : t('studioChat.previewHtml') }}</button>
+              <button v-if="message.role === 'assistant' && ['failed', 'stopped'].includes(message.status) && index === activeChat.messages.length - 1" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="chatActiveBusy || !!chatStorageError" @click="sendChat(true)"><Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}</button>
             </div>
+            <iframe v-if="htmlPreviewCreated[message.id]" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="" referrerpolicy="no-referrer"></iframe>
           </article>
         </div>
       </div>
       <button v-if="!atBottom && activeChat?.messages.length" type="button" class="studio-btn studio-btn--ghost chat-latest" @click="scrollToBottom">{{ t('studioChat.latest') }}<Icon name="arrowDown" size="xs" /></button>
+      <div class="text-chat-options">
+        <label class="studio-label"><span>{{ t('studioChat.apiKey') }}</span><select class="studio-input--boxed" data-testid="chat-key" :value="chatKeyId ?? ''" :disabled="chatOptionsLoading" @change="selectChatKey(Number(($event.target as HTMLSelectElement).value) || null)"><option v-if="!chatKeys.length" value="">{{ t('studioChat.chooseKey') }}</option><option v-for="key in chatKeys" :key="key.id" :value="key.id">{{ key.name }}</option></select></label>
+        <label class="studio-label"><span>{{ t('studioChat.model') }}</span><select class="studio-input--boxed" data-testid="chat-model" :value="chatModel" :disabled="chatOptionsLoading || !chatModels.length" @change="selectChatModel(($event.target as HTMLSelectElement).value)"><option v-if="!chatModels.length" value="">{{ t(chatOptionsLoading ? 'studioChat.loadingModels' : 'studioChat.noModels') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select></label>
+        <button type="button" class="studio-icon-btn" :disabled="chatOptionsLoading" :aria-label="t('studioChat.refresh')" @click="refreshChatOptions"><Icon name="refresh" size="sm" /></button>
+      </div>
       <form class="text-chat-composer" @submit.prevent="sendChat()">
         <div class="chat-input-box"><textarea ref="input" v-model="draft" rows="3" maxlength="32000" data-testid="chat-input" :aria-label="t('studioChat.input')" :placeholder="t('studioChat.placeholder')" :disabled="!chatReady" @blur="saveChatDraft" @keydown="onKeydown"></textarea>
-          <div class="chat-composer-bottom"><span>{{ t('studioChat.shortcut') }}</span><button v-if="chatBusy" type="button" class="studio-btn studio-btn--ghost" data-testid="chat-stop" @click="stopChat"><span class="chat-stop-icon" aria-hidden="true"></span>{{ t('studioChat.stop') }}</button><button v-else type="submit" class="studio-btn studio-btn--primary" data-testid="chat-send" :disabled="!canSend"><Icon name="arrowUp" size="sm" />{{ t('studioChat.send') }}</button></div>
+          <div class="chat-composer-bottom"><span>{{ t('studioChat.shortcut') }}</span><button v-if="chatActiveBusy" type="button" class="studio-btn studio-btn--ghost" data-testid="chat-stop" @click="stopChat()"><span class="chat-stop-icon" aria-hidden="true"></span>{{ t('studioChat.stop') }}</button><button v-else type="submit" class="studio-btn studio-btn--primary" data-testid="chat-send" :disabled="!canSend"><Icon name="arrowUp" size="sm" />{{ t('studioChat.send') }}</button></div>
         </div>
         <p class="chat-composer-note">{{ t('studioChat.billingNote') }}</p>
       </form>
@@ -62,25 +64,33 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import Icon from '@/components/icons/Icon.vue'
 import StudioChatHistory from './StudioChatHistory.vue'
+import { extractStudioChatHtml, studioChatHtmlDocument } from './studioChatHtml'
 import { useAppStore } from '@/stores/app'
 import { useStudioDialog } from '@/composables/useStudioDialog'
-import { activeChat, chatActiveId, chatBusy, chatKeyId, chatKeys, chatModel, chatModels, chatOptionsError, chatOptionsLoading, chatReady, chatRunningId, chatStorageError, initStudioChat, newChat, refreshChatOptions, reloadChatHistory, retryChatSave, saveChatDraft, selectChat, selectChatKey, selectChatModel, sendChat, stopChat } from '@/composables/useStudioChat'
+import { activeChat, chatActiveBusy, chatActiveId, chatBusy, chatKeyId, chatKeys, chatModel, chatModels, chatOptionsError, chatOptionsLoading, chatReady, chatRunningIds, chatStorageError, initStudioChat, newChat, refreshChatOptions, reloadChatHistory, retryChatSave, saveChatDraft, selectChat, selectChatKey, selectChatModel, sendChat, stopChat } from '@/composables/useStudioChat'
 import './studio-shell.css'
 const { t } = useI18n(), app = useAppStore()
 const scroller = ref<HTMLElement>(), input = ref<HTMLTextAreaElement>(), atBottom = ref(true), historyOpen = ref(false), historyDialog = ref<HTMLElement>(), copied = ref('')
+const htmlPreview = ref<Record<string, boolean>>({})
+const htmlPreviewCreated = ref<Record<string, boolean>>({})
 useStudioDialog(historyDialog, () => { historyOpen.value = false }, historyOpen)
 const draft = computed({ get: () => activeChat.value?.draft || '', set: value => { if (activeChat.value) activeChat.value.draft = value } })
-const canSend = computed(() => chatReady.value && !chatBusy.value && !chatOptionsLoading.value && !chatStorageError.value && !!chatKeyId.value && chatModels.value.includes(chatModel.value) && !!draft.value.trim())
+const backgroundChatId = computed(() => chatRunningIds.value.find(id => id !== chatActiveId.value) || '')
+const canSend = computed(() => chatReady.value && !chatActiveBusy.value && !chatOptionsLoading.value && !chatStorageError.value && !!chatKeyId.value && chatModels.value.includes(chatModel.value) && !!draft.value.trim())
 function renderMarkdown(text: string) {
   return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'a', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
     ALLOWED_ATTR: ['href', 'title', 'class'], ALLOW_DATA_ATTR: false
   })
 }
+function toggleHtmlPreview(messageId: string) {
+  htmlPreviewCreated.value[messageId] = true
+  htmlPreview.value[messageId] = !htmlPreview.value[messageId]
+}
 function trackScroll() { const element = scroller.value; if (element) atBottom.value = element.scrollHeight - element.scrollTop - element.clientHeight < 90 }
 function scrollToBottom() { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight; atBottom.value = true }
-watch(() => [chatActiveId.value, activeChat.value?.messages.length], async () => { await nextTick(); scrollToBottom() })
-watch(() => activeChat.value?.messages.at(-1)?.content, async () => { if (atBottom.value) { await nextTick(); scrollToBottom() } })
+watch(() => [chatActiveId.value, activeChat.value?.messages.length], async () => { await nextTick(); scrollToBottom() }, { flush: 'post', immediate: true })
+watch(() => activeChat.value?.messages.at(-1)?.content, async () => { if (atBottom.value) { await nextTick(); scrollToBottom() } }, { flush: 'post' })
 function onKeydown(event: KeyboardEvent) { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (canSend.value) void sendChat() } }
 function applyExample(key: 'brainstorm' | 'write' | 'explain') { draft.value = t(`studioChat.examples.${key}.prompt`); input.value?.focus() }
 async function reloadHistory() { if (!window.confirm(t('studioChat.reloadConfirm'))) return; await reloadChatHistory() }
@@ -101,12 +111,12 @@ onMounted(() => { void initStudioChat() })
 .text-chat-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .text-chat-head { flex-shrink: 0; }
 .text-chat-history-toggle { display: none; }
-.text-chat-options { display: flex; align-items: flex-end; gap: 10px; padding: 12px 20px; flex-shrink: 0; border-bottom: 1px solid var(--st-border); }
+.text-chat-options { display: flex; align-items: flex-end; justify-content: center; gap: 10px; padding: 12px 24px 0; flex-shrink: 0; border-top: 1px solid var(--st-border); background: var(--st-panel); }
 .text-chat-options label { flex: 1; min-width: 0; max-width: 320px; }
 .text-chat-options select { width: 100%; font-size: 12px; min-width: 0; text-overflow: ellipsis; }
 .text-chat-alert { margin: 8px 16px 0; flex-shrink: 0; }
 .text-chat-background { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px; font-size: 12px; background: var(--st-accent-soft); color: var(--st-accent-text); }
-.text-chat-messages { flex: 1; min-height: 0; padding: 24px; scroll-behavior: smooth; }
+.text-chat-messages { flex: 1; min-height: 0; padding: 24px; scroll-behavior: auto; }
 .chat-welcome { min-height: 100%; padding-block: 24px; }
 .chat-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 24px; }
 .chat-no-key { margin-top: 20px; display: grid; gap: 12px; justify-items: center; color: var(--st-text-soft); font-size: 13px; }
@@ -145,6 +155,7 @@ onMounted(() => { void initStudioChat() })
 .chat-markdown :deep(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin-bottom: 12px; }
 .chat-markdown :deep(td), .chat-markdown :deep(th) { border: 1px solid var(--st-border); padding: 6px 10px; }
 .chat-markdown :deep(h1), .chat-markdown :deep(h2), .chat-markdown :deep(h3) { font-weight: 700; margin: 16px 0 8px; }
+.chat-html-preview { display: block; width: 100%; min-height: 360px; margin-top: 12px; border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (max-width: 1023px) {
   .text-chat-sidebar, .text-chat-desktop-mark { display: none; }
