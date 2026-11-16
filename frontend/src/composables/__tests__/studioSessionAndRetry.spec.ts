@@ -88,7 +88,7 @@ describe('studio session and task isolation', () => {
   })
 
   it('sends the selected video size', async () => {
-    const fetcher = vi.fn().mockRejectedValue(new Error('transport failure'))
+    const fetcher = vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ message: 'rejected' }) }))
     vi.stubGlobal('fetch', fetcher)
     const video = await import('../useVideoStudioEngine')
     video.prompt.value = 'test'
@@ -478,10 +478,9 @@ describe('studio session and task isolation', () => {
     video.submitBatch()
     await vi.waitFor(() => expect(video.generating.value).toBe(false))
     const task = video.tasks.value[0]
-    expect(task.submissionUnconfirmed).toBe(true)
+    expect(task.submissionUnconfirmed).toBe(false)
     const key = task.submissionKey
-    video.retryTask(task.taskId)
-    await vi.waitFor(() => expect(task.remoteId).toBe('accepted-job'))
+    expect(task.remoteId).toBe('accepted-job')
     expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
     expect(fetcher.mock.calls.some(([url]) => url.endsWith(`/submissions/${key}`))).toBe(true)
   })

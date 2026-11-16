@@ -21,7 +21,7 @@
                 ? t('videoStudio.downloadPending')
                 : t('videoStudio.taskPaused')
         }}</strong>
-        <p>{{ task.error || t('videoStudio.generateFailed') }}</p>
+        <p class="task-error">{{ task.error || t('videoStudio.generateFailed') }}</p>
         <p v-if="task.upstreamDone">
           {{ t('videoStudio.downloadFailedRetry') }}
         </p>
@@ -150,11 +150,13 @@ const statusLabel = computed(() =>
       ? 'videoStudio.completed'
       : props.task.status === 'failed'
         ? 'videoStudio.needsAttention'
-        : props.task.upstreamDone
-          ? 'videoStudio.downloading'
-          : props.task.status === 'processing'
-            ? 'videoStudio.processing'
-            : 'videoStudio.queued'
+        : props.task.submissionRecovering
+          ? 'videoStudio.checkingSubmission'
+          : props.task.upstreamDone
+            ? 'videoStudio.downloading'
+            : props.task.status === 'processing'
+              ? 'videoStudio.processing'
+              : 'videoStudio.queued'
   )
 )
 const retryLabel = computed(() =>
@@ -171,6 +173,7 @@ const retryLabel = computed(() =>
 </script>
 
 <style scoped>
+.task-error { white-space: pre-line; }
 .reference-task-note { margin:8px 0 0; font-size:11px; line-height:1.6; color:var(--vs-secondary); overflow-wrap:anywhere; }
 .generation-card {
   min-width: 0;

@@ -24,10 +24,24 @@ describe('video reference combinations', () => {
     value.media.push({ name: 'audio_1', url: 'https://example.com/a.mp3' })
     expect(validateVideoReferences(value, videoCapabilities('kling-v4-flash', 'reference').references)).toBe('referenceSlotUnsupported')
     value.keepOriginalSound = true
+    value.media = [{ name: 'video_1', url: 'https://example.com/v.mp4' }]
     expect(validateVideoReferences(value, videoCapabilities('kling-v4', 'reference').references, 'on')).toBe('referenceAudioConflict')
     value.keepOriginalSound = false
     value.media = [{ name: 'video_1', url: 'https://example.com/v.mp4' }]
     expect(validateVideoReferences(value, videoCapabilities('kling-v3-omni', 'reference').references, 'on')).toBe('referenceAudioConflict')
+  })
+  it('requires a reference video before preserving its original sound', () => {
+    const value = refs(4)
+    const limits = videoCapabilities('kling-v4', 'reference').references
+    value.keepOriginalSound = true
+    expect(validateVideoReferences(value, limits)).toBe('referenceOriginalNeedsVideo')
+    value.media = [{ name: 'audio_1', url: 'https://example.com/a.mp3' }]
+    expect(validateVideoReferences(value, limits)).toBe('referenceOriginalNeedsVideo')
+    value.media = [{ name: 'video_1', url: 'https://example.com/v.mp4' }]
+    expect(validateVideoReferences(value, limits)).toBe('')
+    value.media = []
+    value.keepOriginalSound = false
+    expect(validateVideoReferences(value, limits)).toBe('')
   })
   it('takes independent task snapshots and retains local files while discarding ephemeral URLs', () => {
     const value = refs(1)

@@ -160,6 +160,9 @@ func ValidateVideoReferences(body []byte) error {
 	if keep.Bool() && !limits.KeepOriginalSound {
 		return fmt.Errorf("original sound is unsupported by this model")
 	}
+	if keep.Bool() && videos == 0 {
+		return fmt.Errorf("keep_original_sound requires a reference video")
+	}
 	sound := gjson.GetBytes(body, "sound").String() == "on"
 	if sound && (keep.Bool() || (videos > 0 && limits.DisableGeneratedAudioWithVideo)) {
 		return fmt.Errorf("generated audio conflicts with the selected reference settings")

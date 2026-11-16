@@ -39,6 +39,7 @@ export function validateVideoReferences(refs: VideoReferences, limits?: VideoRef
   if (limits.required_slots.some(name => !all.some(item => item.name === name))) return 'referencesRequired'
   if (all.some(item => !item.file && !publicReferenceURL(item.url))) return 'referenceInvalidURL'
   if (refs.keepOriginalSound && !limits.keep_original_sound) return 'referenceOriginalUnsupported'
+  if (refs.keepOriginalSound && !refs.media.some(item => limits.video_slots.includes(item.name))) return 'referenceOriginalNeedsVideo'
   if (sound === 'on' && (refs.keepOriginalSound || limits.disable_generated_audio_with_video && refs.media.some(item => item.name.startsWith('video_')))) return 'referenceAudioConflict'
   if (limits.multi_shots_required && refs.preferMultiShots === false) return 'referenceMultiShotsRequired'
   return ''

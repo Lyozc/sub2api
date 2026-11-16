@@ -4,21 +4,43 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type videoSubmissionResponse struct {
 	Status int    `json:"status"`
 	Body   string `json:"body"`
+}
+
+// The idempotency record tracks durable receipt storage. This separate outcome
+// describes the upstream acknowledgement, never the final generation result.
+func videoSubmissionOutcome(stored videoSubmissionResponse) string {
+	if stored.Status >= 200 && stored.Status < 300 {
+		var body struct {
+			ID        string `json:"id"`
+			RequestID string `json:"request_id"`
+			TaskID    string `json:"task_id"`
+		}
+		if json.Unmarshal([]byte(stored.Body), &body) == nil && (body.ID != "" || body.RequestID != "" || body.TaskID != "") {
+			return "accepted"
+		}
+	}
+	if stored.Status >= 400 && stored.Status < 500 && stored.Status != 408 && stored.Status != 409 && stored.Status != 429 {
+		return "rejected"
+	}
+	return "unknown"
 }
 
 type videoSubmissionWriter struct {
@@ -64,6 +86,13 @@ func writeVideoSubmission(c *gin.Context, result *service.IdempotencyExecuteResu
 	if result.Replayed {
 		c.Header("X-Idempotency-Replayed", "true")
 	}
+	outcome := videoSubmissionOutcome(stored)
+	c.Header("X-Video-Submission-State", outcome)
+	logger.FromContext(c.Request.Context()).Info("video submission receipt available",
+		zap.String("component", "video.submission"),
+		zap.String("submission_state", outcome),
+		zap.Int("receipt_status", stored.Status),
+		zap.Bool("replayed", result.Replayed))
 	c.Data(stored.Status, "application/json", []byte(stored.Body))
 }
 
@@ -108,6 +137,10 @@ func VideoStudioGenerationOnce(c *gin.Context, target gin.HandlerFunc) {
 		return videoSubmissionResponse{Status: w.status, Body: w.body.String()}, nil
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrIdempotencyInProgress) {
+			c.Header("X-Video-Submission-State", "processing")
+			c.Header("Retry-After", "5")
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -122,10 +155,15 @@ func VideoStudioSubmission(c *gin.Context) {
 	}
 	result, err := coordinator.LookupVideoSubmission(c.Request.Context(), videoSubmissionScope(c), c.Param("submission_id"))
 	if err != nil {
+		if errors.Is(err, service.ErrIdempotencyInProgress) {
+			c.Header("X-Video-Submission-State", "processing")
+			c.Header("Retry-After", "5")
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
 	if result == nil {
+		c.Header("X-Video-Submission-State", "not_found")
 		c.JSON(404, gin.H{"error": gin.H{"code": "VIDEO_SUBMISSION_NOT_FOUND", "message": "No submission acknowledgement found; do not create another job until the original submission is confirmed"}})
 		return
 	}

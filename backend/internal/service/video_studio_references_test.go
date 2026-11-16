@@ -84,6 +84,30 @@ func TestVideoStudioReferenceMappingAndStrictValidation(t *testing.T) {
 	}
 }
 
+func TestVideoStudioOriginalSoundRequiresReferenceVideo(t *testing.T) {
+	images := referenceTestImages("image", 4)
+	for _, tc := range []struct {
+		name  string
+		media []map[string]string
+		keep  bool
+		valid bool
+	}{
+		{name: "images without original sound", keep: false, valid: true},
+		{name: "images cannot retain sound", keep: true},
+		{name: "audio cannot retain video sound", media: []map[string]string{{"name": "audio_1", "url": "https://example.com/a.mp3"}}, keep: true},
+		{name: "video can retain sound", media: []map[string]string{{"name": "video_1", "url": "https://example.com/v.mp4"}}, keep: true, valid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateVideoStudioRequest(referenceTestBody("kling-v4", "reference", images, tc.media, map[string]any{"keep_original_sound": tc.keep}))
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "requires a reference video")
+			}
+		})
+	}
+}
+
 func TestKlingReferenceVideoDurationBillingUsesVerifiedMedia(t *testing.T) {
 	original := klingReferenceProbe
 	t.Cleanup(func() { klingReferenceProbe = original })

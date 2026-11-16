@@ -41,6 +41,8 @@ const POLL_INTERVAL_MS = 5000
 const POLL_TIMEOUT_MS = 45 * 60 * 1000
 // 连续轮询错误容忍次数(网络抖动不立即判死)
 const MAX_POLL_ERRORS = 3
+const SUBMISSION_RECOVERY_TIMEOUT_MS = 5 * 60 * 1000
+const SUBMISSION_RECEIPT_TIMEOUT_MS = 15000
 
 // ===== 类型 =====
 // 模型选项带所属分组:工作台密钥按分组各一把(多个 grok/composite 视频分组同台),
@@ -72,6 +74,7 @@ export interface VideoTask {
   remoteId: string
   submissionKey?: string
   submissionUnconfirmed?: boolean
+  submissionRecovering?: boolean
   failureKind?: 'submission' | 'polling' | 'download' | 'upstream'
   archived?: boolean
   assetDeleted?: boolean
@@ -429,11 +432,17 @@ async function submitTask(task: VideoTask): Promise<{ remoteId: string }> {
   const headers: Record<string, string> = { ...sessionAuthHeader(task), 'Content-Type': 'application/json', 'Idempotency-Key': task.submissionKey || '' }
   if (task.groupId && task.groupId > 0) headers['X-Video-Studio-Group'] = String(task.groupId)
   const controller = new AbortController()
+  submissionControllers.set(task.taskId, controller)
   const timer = window.setTimeout(() => controller.abort(), 120000)
   try {
     const encoded = JSON.stringify(payload)
     if (new Blob([encoded]).size > 60 * 1024 * 1024) throw new Error(t('videoStudio.referenceRequestTooLarge'))
     task.submissionUnconfirmed = true
+    // Persist the uncertainty flag before the paid request can leave the browser.
+    // A reload must recover this key, even if no response was received.
+    try { await taskPersister?.() } catch (error) { task.submissionUnconfirmed = false; throw error }
+    if (!isCurrentSession(task)) throw new StudioSessionChangedError()
+    if (stoppedTasks.has(task.taskId)) { task.submissionUnconfirmed = false; throw new Error(t('videoStudio.stoppedWaiting')) }
     const res = await fetch(api('/api/v1/video-studio/generations'), {
       method: 'POST',
       headers,
@@ -453,6 +462,7 @@ async function submitTask(task: VideoTask): Promise<{ remoteId: string }> {
     return { remoteId }
   } finally {
     window.clearTimeout(timer)
+    if (submissionControllers.get(task.taskId) === controller) submissionControllers.delete(task.taskId)
   }
 }
 
@@ -530,22 +540,94 @@ function errText(e: unknown): string {
 // 手动停止等待的任务:runTask 轮询中检测到即退出
 const stoppedTasks = new Set<number>()
 const pollControllers = new Map<number, AbortController>()
+const submissionControllers = new Map<number, AbortController>()
 const runningTasks = new Set<number>()
 let taskPersister: (() => Promise<unknown> | undefined) | undefined
 export function registerVideoTaskPersistence(persist: typeof taskPersister) { taskPersister = persist }
+interface SubmissionReceipt {
+  id?: string
+  request_id?: string
+  task_id?: string
+  billable_duration_seconds?: number
+  error?: string | { message?: string }
+  message?: string
+}
+
+function submissionMessage(body: SubmissionReceipt | null, fallback: string): string {
+  return (typeof body?.error === 'string' ? body.error : body?.error?.message) || body?.message || fallback
+}
+
+/** Wait only for the original receipt. This path never creates another job. */
 export async function recoverVideoSubmission(task: VideoTask) {
   if (!task.submissionKey) throw new Error(t('videoStudio.submissionUnknown'))
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(),30000)
+  submissionControllers.set(task.taskId, controller)
+  const deadline = Date.now() + SUBMISSION_RECOVERY_TIMEOUT_MS
+  const recoveryTimer = window.setTimeout(() => controller.abort(), SUBMISSION_RECOVERY_TIMEOUT_MS)
+  let lastError: Error | undefined
+  let attempt = 0
+  task.submissionRecovering = true
+  const assertCurrent = () => {
+    if (!isCurrentSession(task)) throw new StudioSessionChangedError()
+    if (stoppedTasks.has(task.taskId)) throw new Error(t('videoStudio.stoppedWaiting'))
+    if (controller.signal.aborted) throw lastError || new Error(t('videoStudio.submissionUnknown'))
+  }
   try {
-    const res = await fetch(api(`/api/v1/video-studio/submissions/${encodeURIComponent(task.submissionKey)}`), { headers: sessionAuthHeader(task), signal: controller.signal })
-    const body = await res.json().catch(() => null) as { id?: string; request_id?: string; task_id?: string } | null
-    if (!isCurrentSession(task)) return
-    const id = body?.id || body?.request_id || body?.task_id
-    if (!res.ok || !id) throw new Error(t('videoStudio.submissionUnknown'))
-    task.remoteId = id
-    task.submissionUnconfirmed = false
-  } finally { window.clearTimeout(timer) }
+    while (Date.now() < deadline) {
+      assertCurrent()
+      const requestController = new AbortController()
+      const abortRequest = () => requestController.abort()
+      controller.signal.addEventListener('abort', abortRequest, { once: true })
+      const timer = window.setTimeout(() => requestController.abort(), Math.min(SUBMISSION_RECEIPT_TIMEOUT_MS, deadline - Date.now()))
+      let terminal = false
+      try {
+        const res = await fetch(api(`/api/v1/video-studio/submissions/${encodeURIComponent(task.submissionKey)}`), { headers: sessionAuthHeader(task), signal: requestController.signal })
+        const body = await res.json().catch(() => null) as SubmissionReceipt | null
+        assertCurrent()
+        const id = body?.id || body?.request_id || body?.task_id
+        if (res.ok && id) {
+          task.remoteId = id
+          task.submissionUnconfirmed = false
+          task.submissionRecovering = false
+          task.error = undefined
+          tasks.value = [...tasks.value]
+          if (body?.billable_duration_seconds) task.billableDuration = body.billable_duration_seconds
+          // Keep the known task ID durable before starting status/content calls.
+          await Promise.resolve(taskPersister?.()).catch(() => {
+            if (isCurrentSession(task)) appStore().showError(t('videoStudio.saveFailed'))
+          })
+          return
+        }
+        lastError = new Error(submissionMessage(body, t('videoStudio.submissionUnknown')))
+        // A replayed error is the saved final HTTP result, not a temporary
+        // receipt lookup failure. Keep 5xx uncertain and preserve its detail.
+        const replayed = res.headers?.get('X-Idempotency-Replayed') === 'true'
+        terminal = replayed || (!res.ok && res.status >= 400 && res.status < 500 && ![404, 408, 409, 429].includes(res.status))
+        if (replayed && res.status >= 400 && res.status < 500 && ![408, 409, 429].includes(res.status)) task.submissionUnconfirmed = false
+      } catch (error) {
+        if (error instanceof StudioSessionChangedError) throw error
+        lastError = error instanceof Error ? error : new Error(errText(error))
+      } finally {
+        window.clearTimeout(timer)
+        controller.signal.removeEventListener('abort', abortRequest)
+      }
+      assertCurrent()
+      if (terminal) throw lastError
+      const delay = Math.min(15000, 5000 * ++attempt, deadline - Date.now())
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => { controller.signal.removeEventListener('abort', abort); resolve() }
+        const timer = window.setTimeout(finish, Math.max(0, delay))
+        const abort = () => { window.clearTimeout(timer); controller.signal.removeEventListener('abort', abort); reject(lastError || new Error(t('videoStudio.submissionUnknown'))) }
+        controller.signal.addEventListener('abort', abort, { once: true })
+        if (controller.signal.aborted) abort()
+      })
+    }
+    throw lastError || new Error(t('videoStudio.submissionUnknown'))
+  } finally {
+    window.clearTimeout(recoveryTimer)
+    if (submissionControllers.get(task.taskId) === controller) submissionControllers.delete(task.taskId)
+    task.submissionRecovering = false
+  }
 }
 
 // runTask:提交 + 轮询 + 取内容 + 入库。独立 async,不阻塞批量循环。
@@ -555,15 +637,32 @@ async function runTask(task: VideoTask) {
   let pollErrors = 0
   try {
     let pollImmediately = Boolean(task.remoteId)
-    if (!task.remoteId && task.submissionUnconfirmed) await recoverVideoSubmission(task)
+    if (!task.remoteId && task.submissionUnconfirmed) {
+      await recoverVideoSubmission(task)
+      pollImmediately = Boolean(task.remoteId)
+    }
     if (!isCurrentSession(task)) return
     if (!task.remoteId) {
       task.submissionKey ||= videoSubmissionKey()
       await taskPersister?.()
       if (!isCurrentSession(task)) return
-      const { remoteId } = await submitTask(task)
+      let remoteId: string
+      try {
+        const submitted = await submitTask(task)
+        remoteId = submitted.remoteId
+      } catch (error) {
+        if (!isCurrentSession(task)) return
+        if (!task.submissionUnconfirmed || stoppedTasks.has(task.taskId)) throw error
+        // The acknowledgement may arrive after the browser/CDN gave up. Use
+        // its existing idempotency key instead of posting another generation.
+        task.error = errText(error)
+        await recoverVideoSubmission(task)
+        remoteId = task.remoteId
+        pollImmediately = true
+      }
       if (!isCurrentSession(task)) return
       task.remoteId = remoteId
+      task.error = undefined
       tasks.value = [...tasks.value]
     }
     const deadline = Date.now() + POLL_TIMEOUT_MS
@@ -614,7 +713,12 @@ async function runTask(task: VideoTask) {
     if (!isCurrentSession(task)) return
     task.status = 'failed'
     task.failureKind = task.remoteId ? 'polling' : 'submission'
-    task.error = task.submissionUnconfirmed ? t('videoStudio.submissionUnknown') : errText(e)
+    const detail = stoppedTasks.has(task.taskId) ? t('videoStudio.stoppedWaiting') : errText(e)
+    // Temporary receipt errors must not hide the original upstream response.
+    const details = task.submissionUnconfirmed
+      ? [task.error, detail, t('videoStudio.submissionUnknown')]
+      : [detail]
+    task.error = [...new Set(details.flatMap(value => value?.split('\n') || []).filter(Boolean))].join('\n')
     tasks.value = [...tasks.value]
   } finally {
     stoppedTasks.delete(task.taskId)
@@ -628,6 +732,7 @@ export function stopWaiting(taskId: number) {
   if (!task || (task.status !== 'pending' && task.status !== 'processing')) return
   stoppedTasks.add(taskId)
   pollControllers.get(taskId)?.abort()
+  submissionControllers.get(taskId)?.abort()
   pruneStoppedTasks()
 }
 
@@ -958,6 +1063,8 @@ export function resetVideoStudioSession() {
   preparingFirstFrame.value = false
   pollControllers.forEach(controller => controller.abort())
   pollControllers.clear()
+  submissionControllers.forEach(controller => controller.abort())
+  submissionControllers.clear()
   runningTasks.clear()
   klingSettings.value = defaultKlingSettings()
   clearKlingReferences()

@@ -12,6 +12,8 @@ const caps = computed(() => allCaps.value[klingReferences.value.mode])
 const limits = computed(() => caps.value.references)
 const entries = computed(() => klingReferences.value.mode === 'frames' ? klingReferences.value.frames : klingReferences.value.images)
 const media = computed(() => klingReferences.value.mode === 'reference' ? klingReferences.value.media : [])
+const hasReferenceVideo = computed(() => media.value.some(item => limits.value?.video_slots.includes(item.name)))
+const canKeepOriginalSound = computed(() => Boolean(limits.value?.keep_original_sound && hasReferenceVideo.value))
 const error = computed(() => validateVideoReferences(activeKlingReferences(), limits.value, klingSettings.value.sound))
 const options = computed(() => {
   const value = limits.value
@@ -32,6 +34,9 @@ watch([model, allCaps, () => klingReferences.value], () => {
   if (!draft.frames.length && !draft.images.length && !draft.media.length && !allCaps.value[draft.mode].references) draft.mode = allCaps.value.frames.references ? 'frames' : 'reference'
 }, { immediate: true })
 watch(() => klingReferences.value.keepOriginalSound, keep => { if (keep && klingSettings.value.sound === 'on') klingSettings.value.sound = 'off' })
+watch([canKeepOriginalSound, () => klingReferences.value.keepOriginalSound], ([allowed, keep]) => {
+  if (!allowed && keep) klingReferences.value.keepOriginalSound = false
+}, { immediate: true })
 function label(name: string) {
   if (name === 'input') return t('videoStudio.firstFrame')
   if (name === 'tail_image') return t('videoStudio.tailFrame')
@@ -95,8 +100,9 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
     <p v-if="preparingFirstFrame" class="reference-hint" role="status">{{ t('videoStudio.preparingFrame') }}</p>
     <p v-if="error && error !== 'referencesRequired'" class="reference-error" role="alert">{{ t(`videoStudio.${error}`) }}</p>
     <label v-if="(limits?.keep_original_sound || klingReferences.keepOriginalSound) && klingReferences.mode === 'reference'" class="reference-check">
-      <input v-model="klingReferences.keepOriginalSound" type="checkbox" />{{ t('videoStudio.keepOriginalSound') }}
+      <input v-model="klingReferences.keepOriginalSound" type="checkbox" data-testid="keep-original-sound" :disabled="!canKeepOriginalSound || preparingFirstFrame" />{{ t('videoStudio.keepOriginalSound') }}
     </label>
+    <p v-if="limits?.keep_original_sound && klingReferences.mode === 'reference' && !hasReferenceVideo" class="reference-hint">{{ t('videoStudio.referenceOriginalNeedsVideo') }}</p>
     <label v-if="limits?.prefer_multi_shots && klingReferences.mode === 'reference'" class="reference-check">
       <input v-model="klingReferences.preferMultiShots" type="checkbox" :disabled="limits.multi_shots_required" />{{ t('videoStudio.preferMultiShots') }}
     </label>

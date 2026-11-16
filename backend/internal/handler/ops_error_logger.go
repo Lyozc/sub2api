@@ -1082,9 +1082,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		defer func() {
 			// Restore the original writer before returning so outer middlewares
 			// don't observe a pooled wrapper that has been released.
-			if c.Writer == w {
-				c.Writer = originalWriter
-			}
+			c.Writer = originalWriter
 			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w
@@ -2155,6 +2153,11 @@ func isKnownOpsErrorType(t string) bool {
 }
 
 func normalizeOpsErrorType(errType string, code string) string {
+	// Kling's provider error envelope uses a platform-specific type. Preserve
+	// its upstream attribution instead of treating it as a gateway api_error.
+	if errType == "kling_upstream_error" {
+		return "upstream_error"
+	}
 	if errType != "" && isKnownOpsErrorType(errType) {
 		return errType
 	}

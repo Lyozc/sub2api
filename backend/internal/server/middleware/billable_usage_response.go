@@ -26,7 +26,9 @@ func BillableUsageResponse() gin.HandlerFunc {
 			return
 		}
 
-		writer := &billableUsageWriter{ResponseWriter: c.Writer, context: c, group: apiKey.Group}
+		originalWriter := c.Writer
+		writer := &billableUsageWriter{ResponseWriter: originalWriter, context: c, group: apiKey.Group}
+		defer func() { c.Writer = originalWriter }()
 		c.Writer = writer
 		c.Next()
 		_ = writer.flushPending()

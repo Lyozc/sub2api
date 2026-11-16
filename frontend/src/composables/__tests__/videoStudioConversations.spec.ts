@@ -158,6 +158,7 @@ describe('video conversations', () => {
   })
 
   it('sends one message with the chosen group and clears only an accepted draft', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 400, json: async () => ({ message: 'invalid request' }) } as Response)
     const chats = await import('../useVideoStudioConversations')
     const engine = await import('../useVideoStudioEngine')
     await chats.initVideoConversations()
@@ -243,6 +244,7 @@ describe('video conversations', () => {
   })
 
   it('creates the chosen number of independent tasks and rejects invalid counts', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 400, json: async () => ({ message: 'invalid request' }) } as Response)
     const engine = await import('../useVideoStudioEngine')
     const chats = await import('../useVideoStudioConversations')
     await chats.initVideoConversations()

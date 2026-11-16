@@ -23,6 +23,32 @@ func billableResponseTestGroup() *service.Group {
 	}
 }
 
+func TestBillableUsageResponseRestoresWriterForOuterMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, billable := range []bool{false, true} {
+		t.Run(strconv.FormatBool(billable), func(t *testing.T) {
+			router := gin.New()
+			var original, observed gin.ResponseWriter
+			router.Use(func(c *gin.Context) {
+				original = c.Writer
+				group := billableResponseTestGroup()
+				group.ReturnBillableUsage = billable
+				c.Set(string(ContextKeyAPIKey), &service.APIKey{Group: group})
+				c.Next()
+				observed = c.Writer
+			})
+			router.POST("/v1/videos", BillableUsageResponse(), func(c *gin.Context) {
+				c.Data(http.StatusBadGateway, "application/json", []byte(`{"error":{"type":"upstream_error"}}`))
+			})
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/videos", nil))
+			require.Same(t, original, observed)
+			require.Equal(t, http.StatusBadGateway, observed.Status())
+			require.Equal(t, http.StatusBadGateway, recorder.Code)
+		})
+	}
+}
+
 func TestRewriteBillableUsageJSON_OpenAIResponses(t *testing.T) {
 	payload := []byte(`{"id":"r","usage":{"input_tokens":100,"output_tokens":10,"total_tokens":110,"input_tokens_details":{"cached_tokens":20,"cache_write_tokens":5}}}`)
 	rewritten, changed := rewriteBillableUsageJSON(payload, billableResponseTestGroup())
