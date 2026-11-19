@@ -417,6 +417,9 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		return
 	}
 	stats.TotalAccountCost = nil
+	for i := range stats.Endpoints {
+		stats.Endpoints[i].AccountCost = 0
+	}
 	stats.UpstreamEndpoints = nil
 	stats.EndpointPaths = nil
 	// 用户侧不暴露税前成本:总消费与实扣同口径

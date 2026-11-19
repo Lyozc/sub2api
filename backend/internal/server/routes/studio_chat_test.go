@@ -48,6 +48,7 @@ func TestStudioChatUsesOwnedKeyAndPreservesConversation(t *testing.T) {
 
 func TestStudioChatDefaultsToHighestReasoningEffort(t *testing.T) {
 	for _, tc := range []struct{ model, want string }{
+		{"gpt-6.2-sol", "max"}, {"gpt-6.2-astra", "max"},
 		{"gpt-6.1-sol", "max"}, {"gpt-6.1-terra", "max"},
 		{"gpt-6-astra", "max"}, {"gpt-5.6-sol", "max"},
 		{"gpt-5.5", "xhigh"}, {"gpt-5.2", "xhigh"},
