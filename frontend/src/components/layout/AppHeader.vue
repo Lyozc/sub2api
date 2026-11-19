@@ -4,12 +4,27 @@
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex shrink-0 items-center gap-2 sm:gap-4">
         <button
+          type="button"
           @click="toggleMobileSidebar"
           class="btn-ghost btn-icon lg:hidden"
+          data-testid="mobile-sidebar-toggle"
+          aria-controls="app-sidebar"
+          :aria-expanded="appStore.mobileOpen"
           :aria-label="t('common.toggleMenu')"
         >
           <Icon name="menu" size="md" />
         </button>
+
+        <button
+          type="button"
+          class="btn-ghost btn-icon hidden lg:inline-flex"
+          data-testid="desktop-sidebar-toggle"
+          aria-controls="app-sidebar"
+          :aria-expanded="!appStore.sidebarHidden"
+          :aria-label="t(appStore.sidebarHidden ? 'nav.showMenu' : 'nav.hideMenu')"
+          :title="t(appStore.sidebarHidden ? 'nav.showMenu' : 'nav.hideMenu')"
+          @click="appStore.toggleSidebarVisibility()"
+        ><Icon :name="appStore.sidebarHidden ? 'menu' : 'chevronLeft'" size="md" /></button>
 
         <div class="hidden lg:block">
           <h1 class="text-lg font-semibold text-gray-900 dark:text-white">

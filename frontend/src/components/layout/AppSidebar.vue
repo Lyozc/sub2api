@@ -1,9 +1,16 @@
 <template>
   <aside
+    id="app-sidebar"
+    ref="sidebarElement"
     class="sidebar"
+    :inert="sidebarInactive"
+    :aria-hidden="sidebarInactive"
+    :role="mobileDrawerOpen ? 'dialog' : undefined"
+    :aria-modal="mobileDrawerOpen ? true : undefined"
+    :aria-label="t('nav.menu')"
     :class="[
       sidebarCollapsed ? 'w-[72px]' : 'w-64',
-      { '-translate-x-full lg:translate-x-0': !mobileOpen }
+      { '-translate-x-full lg:translate-x-0': !mobileOpen, 'sidebar-hidden-desktop': appStore.sidebarHidden }
     ]"
   >
     <!-- Logo/Brand -->
@@ -27,6 +34,15 @@
         <!-- Version Badge -->
         <VersionBadge :version="siteVersion" />
       </div>
+      <button
+        v-if="!sidebarCollapsed"
+        type="button"
+        class="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+        data-testid="sidebar-close"
+        :aria-label="t('nav.hideMenu')"
+        :title="t('nav.hideMenu')"
+        @click="closeSidebar"
+      ><Icon name="x" size="sm" /></button>
     </div>
 
     <!-- Navigation -->
@@ -199,6 +215,8 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { useMediaQuery } from '@vueuse/core'
+import { useStudioDialog } from '@/composables/useStudioDialog'
 
 interface NavItem {
   path: string
@@ -246,7 +264,12 @@ const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 
-const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
+const isDesktop = useMediaQuery('(min-width: 1024px)')
+const sidebarElement = ref<HTMLElement>()
+const sidebarInactive = computed(() => isDesktop.value ? appStore.sidebarHidden : !appStore.mobileOpen)
+const mobileDrawerOpen = computed(() => !isDesktop.value && appStore.mobileOpen)
+useStudioDialog(sidebarElement, closeMobile, mobileDrawerOpen)
+const sidebarCollapsed = computed(() => isDesktop.value && appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
@@ -891,6 +914,12 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
 }
 
+function closeSidebar() {
+  if (!isDesktop.value) { closeMobile(); return }
+  appStore.setSidebarHidden(true)
+  void nextTick(() => document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-toggle"]')?.focus())
+}
+
 function closeMobile() {
   appStore.setMobileOpen(false)
 }
@@ -998,6 +1027,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+@media (min-width: 1024px) {
+  .sidebar.sidebar-hidden-desktop { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
 .sidebar-logo {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;

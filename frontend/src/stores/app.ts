@@ -18,6 +18,7 @@ export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
 
   const sidebarCollapsed = ref<boolean>(false)
+  const sidebarHidden = ref<boolean>(false)
   const mobileOpen = ref<boolean>(false)
   const sidebarScrollTop = ref<number>(0)
   const loading = ref<boolean>(false)
@@ -60,6 +61,14 @@ export const useAppStore = defineStore('app', () => {
   /**
    * Toggle sidebar collapsed state
    */
+  function toggleSidebarVisibility(): void {
+    sidebarHidden.value = !sidebarHidden.value
+  }
+
+  function setSidebarHidden(hidden: boolean): void {
+    sidebarHidden.value = hidden
+  }
+
   function toggleSidebar(): void {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
@@ -230,6 +239,7 @@ export const useAppStore = defineStore('app', () => {
    */
   function reset(): void {
     sidebarCollapsed.value = false
+    sidebarHidden.value = false
     loading.value = false
     loadingCount.value = 0
     toasts.value = []
@@ -443,6 +453,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     // State
     sidebarCollapsed,
+    sidebarHidden,
     mobileOpen,
     sidebarScrollTop,
     loading,
@@ -474,6 +485,8 @@ export const useAppStore = defineStore('app', () => {
 
     // Actions
     toggleSidebar,
+    toggleSidebarVisibility,
+    setSidebarHidden,
     setSidebarCollapsed,
     toggleMobileSidebar,
     setMobileOpen,

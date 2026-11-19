@@ -9,7 +9,7 @@
     <!-- Main Content Area -->
     <div
       class="relative min-h-screen transition-all duration-300"
-      :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
+      :class="sidebarHidden ? 'lg:ml-0' : sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64'"
     >
       <!-- Header -->
       <AppHeader />
@@ -35,6 +35,7 @@ import AppHeader from './AppHeader.vue'
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
+const sidebarHidden = computed(() => appStore.sidebarHidden)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const { replayTour } = useOnboardingTour({
