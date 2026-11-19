@@ -56,7 +56,12 @@ func prepareStudioChat(keys *service.APIKeyService) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "The selected API key is unavailable"})
 			return
 		}
-		payload, err := json.Marshal(gin.H{"model": strings.TrimSpace(req.Model), "messages": req.Messages, "stream": true})
+		model := strings.TrimSpace(req.Model)
+		chat := gin.H{"model": model, "messages": req.Messages, "stream": true}
+		if effort := service.StudioChatReasoningEffort(model); effort != "" {
+			chat["reasoning_effort"] = effort
+		}
+		payload, err := json.Marshal(chat)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid chat request"})
 			return

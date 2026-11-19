@@ -46,6 +46,48 @@ func TestStudioChatUsesOwnedKeyAndPreservesConversation(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
 }
 
+func TestStudioChatDefaultsToHighestReasoningEffort(t *testing.T) {
+	for _, tc := range []struct{ model, want string }{
+		{"gpt-6.1-sol", "max"}, {"gpt-6.1-terra", "max"},
+		{"gpt-6-astra", "max"}, {"gpt-5.6-sol", "max"},
+		{"gpt-5.5", "xhigh"}, {"gpt-5.2", "xhigh"},
+		{"gpt-5.1", "high"}, {"gpt-5.1-codex", "high"},
+		{"gpt-5-mini", "high"}, {"o3", "high"},
+		{"grok-4.7", "xhigh"}, {"grok-4.6", "xhigh"}, {"grok-4.5", "high"},
+		{"grok-3-mini", "high"}, {"grok-4", ""},
+		{"deepseek-v4-pro", "max"}, {"deepseek-reasoner", "high"},
+		{"deepseek-chat", ""}, {"gemini-3.8-flash", "high"},
+		{"kimi-k2.5", "max"}, {"glm-5", "max"},
+		{"claude-opus-4-6", "max"}, {"claude-opus-4-5", "high"},
+		{"gpt-4o", ""}, {"unknown-model", ""},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			r := gin.New()
+			r.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 7}) })
+			called := false
+			r.POST("/chat", prepareStudioChat(newStudioAIRouteKeyService(7)), func(c *gin.Context) {
+				called = true
+				var body map[string]any
+				require.NoError(t, json.NewDecoder(c.Request.Body).Decode(&body))
+				require.Equal(t, tc.model, body["model"])
+				if tc.want == "" {
+					require.NotContains(t, body, "reasoning_effort")
+				} else {
+					require.Equal(t, tc.want, body["reasoning_effort"])
+				}
+				c.Status(200)
+			})
+			// Client-supplied preferences cannot lower the studio default.
+			req := httptest.NewRequest("POST", "/chat", strings.NewReader(`{"key_id":11,"model":"`+tc.model+`","reasoning_effort":"low","messages":[{"role":"user","content":"hello"}]}`))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			require.Equal(t, 200, rec.Code)
+			require.True(t, called)
+		})
+	}
+}
+
 func TestStudioChatRejectsInvalidRequestsBeforeGateway(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	valid := `{"key_id":11,"model":"chat-model","messages":[{"role":"user","content":"hello"}]}`

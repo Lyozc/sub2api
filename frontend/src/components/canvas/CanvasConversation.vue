@@ -37,7 +37,7 @@
               <button v-if="message.role === 'assistant' && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlPreview[message.id] === true" @click="toggleHtmlPreview(message.id)"><Icon name="eye" size="xs" />{{ htmlPreview[message.id] ? t('studioChat.showHtmlCode') : t('studioChat.previewHtml') }}</button>
               <button v-if="message.role === 'assistant' && ['failed', 'stopped'].includes(message.status) && index === activeChat.messages.length - 1" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="chatActiveBusy || !!chatStorageError" @click="sendChat(true)"><Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}</button>
             </div>
-            <iframe v-if="htmlPreviewCreated[message.id]" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="" referrerpolicy="no-referrer"></iframe>
+            <iframe v-if="htmlPreviewCreated[message.id]" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
           </article>
         </div>
       </div>
