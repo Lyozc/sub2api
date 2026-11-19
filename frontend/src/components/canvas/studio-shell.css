@@ -4,43 +4,70 @@
  * Only the canvas studio components (chat draw, video studio, prompt library,
  * assets, config) use these classes. Every rule is namespaced under
  * `.studio-shell` or a `studio-` class prefix so admin and other screens keep
- * their own styling. The workspace keeps its cinema palette independently of the app theme.
+ * their own styling. Palette values follow the app theme and primary colors.
  */
 
-.studio-shell,
-.dark .studio-shell {
-  /* Night screening room: an independent workspace palette in either app mode. */
-  color-scheme: dark;
-  --st-bg: #0e1012;
-  --st-panel: #121518;
-  --st-panel-soft: #171b1f;
-  --st-surface: #20262c;
-  --st-border: #2a3038;
-  --st-border-strong: #414a55;
-  --st-text: #eef1f4;
-  --st-text-soft: #bec5cd;
-  --st-muted: #929ba6;
-  --st-accent: #e08a2e;
-  --st-accent-hover: #f0a64d;
-  --st-accent-on: #1b1208;
-  --st-accent-soft: rgba(224, 138, 46, 0.12);
-  --st-accent-border: rgba(224, 138, 46, 0.36);
-  --st-accent-text: #f1ad59;
-  --st-focus: #f1ad59;
-  --st-danger: #f59c98;
-  --st-danger-soft: rgba(205, 65, 57, 0.12);
-  --st-danger-border: rgba(240, 104, 96, 0.35);
-  --st-warn: #efbd6e;
-  --st-warn-soft: rgba(224, 138, 46, 0.1);
-  --st-warn-border: rgba(224, 138, 46, 0.32);
-  --st-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.18);
-  --st-shadow: 0 12px 36px -24px rgba(0, 0, 0, 0.65);
-  --st-shadow-lg: 0 24px 60px -32px rgba(0, 0, 0, 0.8);
+.studio-shell {
+  color-scheme: light;
+  --st-bg: theme('colors.gray.50');
+  --st-panel: theme('colors.white');
+  --st-panel-soft: theme('colors.gray.50');
+  --st-surface: theme('colors.gray.100');
+  --st-border: theme('colors.gray.200');
+  --st-border-strong: theme('colors.gray.300');
+  --st-text: theme('colors.gray.900');
+  --st-text-soft: theme('colors.gray.600');
+  --st-muted: theme('colors.gray.500');
+  --st-accent: theme('colors.primary.600');
+  --st-accent-hover: theme('colors.primary.700');
+  --st-accent-on: theme('colors.white');
+  --st-accent-soft: theme('colors.primary.50');
+  --st-accent-border: theme('colors.primary.200');
+  --st-accent-text: theme('colors.primary.700');
+  --st-focus: theme('colors.primary.500');
+  --st-danger: #b91c1c;
+  --st-danger-soft: #fef2f2;
+  --st-danger-border: #fecaca;
+  --st-warn: #92400e;
+  --st-warn-soft: #fffbeb;
+  --st-warn-border: #fde68a;
+  --st-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --st-shadow: 0 10px 30px -22px rgba(16, 24, 40, 0.2);
+  --st-shadow-lg: 0 18px 44px -30px rgba(16, 24, 40, 0.28);
   --st-radius: 10px;
   --st-radius-lg: 12px;
   min-width: 0;
   color: var(--st-text);
   background: var(--st-bg);
+}
+
+.dark .studio-shell {
+  color-scheme: dark;
+  --st-bg: theme('colors.dark.950');
+  --st-panel: theme('colors.dark.900');
+  --st-panel-soft: theme('colors.dark.800');
+  --st-surface: theme('colors.dark.800');
+  --st-border: theme('colors.dark.700');
+  --st-border-strong: theme('colors.dark.600');
+  --st-text: theme('colors.gray.100');
+  --st-text-soft: theme('colors.dark.300');
+  --st-muted: theme('colors.dark.400');
+  --st-accent: theme('colors.primary.500');
+  --st-accent-hover: theme('colors.primary.400');
+  --st-accent-on: theme('colors.primary.950');
+  --st-accent-soft: color-mix(in srgb, var(--st-accent) 12%, transparent);
+  --st-accent-border: color-mix(in srgb, var(--st-accent) 36%, transparent);
+  --st-accent-text: theme('colors.primary.300');
+  --st-focus: theme('colors.primary.400');
+  --st-danger: #fca5a5;
+  --st-danger-soft: rgba(185, 28, 28, 0.18);
+  --st-danger-border: rgba(248, 113, 113, 0.35);
+  --st-warn: #fcd34d;
+  --st-warn-soft: rgba(180, 83, 9, 0.18);
+  --st-warn-border: rgba(252, 211, 77, 0.3);
+  --st-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --st-shadow: 0 12px 30px -20px rgba(0, 0, 0, 0.6);
+  --st-shadow-lg: 0 20px 48px -28px rgba(0, 0, 0, 0.7);
 }
 
 /* ---------------------------------------------------------------- shell ---- */

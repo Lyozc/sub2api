@@ -14,7 +14,7 @@
           </span>
         </div>
 
-        <nav class="studio-nav" :aria-label="t('canvas.studioNav')">
+        <nav ref="navigation" class="studio-nav" :aria-label="t('canvas.studioNav')">
           <button
             v-for="tab in TABS"
             :key="tab.value"
@@ -25,6 +25,15 @@
             @click="switchTab(tab.value)"
           ><Icon :name="tab.icon" size="sm" aria-hidden="true" /><span class="studio-nav-label">{{ t(tab.label) }}</span></button>
         </nav>
+
+        <button
+          v-if="standalone"
+          type="button"
+          class="studio-icon-btn studio-theme-toggle"
+          :aria-label="t(studioIsDark ? 'nav.lightMode' : 'nav.darkMode')"
+          :title="t(studioIsDark ? 'nav.lightMode' : 'nav.darkMode')"
+          @click="toggleStudioTheme"
+        ><Icon :name="studioIsDark ? 'sun' : 'moon'" size="sm" /></button>
 
         <div class="studio-topbar-actions">
           <button
@@ -49,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, watch, ref, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, watch, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -67,6 +76,40 @@ const CanvasConversation = defineAsyncComponent(() => import('@/components/canva
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+
+// Standalone windows use the same preference as the website, including changes
+// made in another tab. Embedded studios keep the website's existing controls.
+const studioIsDark = ref(document.documentElement.classList.contains('dark'))
+let themeObserver: MutationObserver | undefined
+function toggleStudioTheme() {
+  const dark = !document.documentElement.classList.contains('dark')
+  document.documentElement.classList.toggle('dark', dark)
+  localStorage.setItem('theme', dark ? 'dark' : 'light')
+}
+function onThemeStorage(event: StorageEvent) {
+  if (route.query.standalone !== '1' || (event.key !== 'theme' && event.key !== null)) return
+  const theme = localStorage.getItem('theme')
+  document.documentElement.classList.toggle('dark', theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches))
+}
+onMounted(() => {
+  themeObserver = new MutationObserver(() => { studioIsDark.value = document.documentElement.classList.contains('dark') })
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  window.addEventListener('storage', onThemeStorage)
+})
+onUnmounted(() => { themeObserver?.disconnect(); window.removeEventListener('storage', onThemeStorage) })
+
+const navigation = ref<HTMLElement>()
+function revealActiveTab() {
+  if (window.innerWidth >= 640) return
+  const nav = navigation.value
+  const active = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+  if (!nav || !active) return
+  const left = active.offsetLeft - nav.offsetLeft
+  if (left < nav.scrollLeft) nav.scrollLeft = left
+  else if (left + active.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = left + active.offsetWidth - nav.clientWidth
+}
+watch(activeTab, () => { void nextTick(revealActiveTab) }, { flush: 'post' })
+onMounted(() => { void nextTick(revealActiveTab) })
 
 const sessionRevision = ref(0)
 let sessionTimer: ReturnType<typeof setTimeout> | undefined

@@ -191,7 +191,7 @@
       @click="focus"
     >
       <!-- 参考图缩略条 -->
-      <div v-if="draftRefs.length" class="flex items-center gap-2 overflow-x-auto px-0.5 pb-0.5 pt-0.5" @click.stop>
+      <div v-if="draftRefs.length" class="image-ref-strip flex items-center gap-2 overflow-x-auto px-0.5 pb-0.5 pt-0.5" @click.stop>
         <div
           v-for="(r, i) in draftRefs"
           :key="r.url"
@@ -231,7 +231,7 @@
         @input="autoGrow"
       ></textarea>
 
-      <div class="flex items-end justify-between gap-2" @click.stop>
+      <div class="image-composer-actions flex items-end justify-between gap-2" @click.stop>
         <div class="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -247,7 +247,7 @@
         <button
           v-if="polishEnabled && !running"
           type="button"
-          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all"
+          class="image-polish-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all"
           :class="canPolish
             ?'border-[var(--st-warn-border)]/70 bg-[var(--st-warn-soft)] text-[var(--st-warn)] hover:bg-[var(--st-warn-soft)]'
             :'cursor-not-allowed border-[var(--st-border)] bg-[var(--st-surface)] text-[var(--st-muted)]'"

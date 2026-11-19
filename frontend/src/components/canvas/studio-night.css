@@ -1,18 +1,19 @@
-/* The night screening room belongs to the studio, never to the app layout. */
-.studio-page { min-height: 100dvh; padding: 12px; background: #090b0d; }
+/* B workspace structure, using the application palette in light and dark modes. */
+.studio-page { min-height: 100dvh; padding: 12px; background: theme('colors.gray.50'); }
+.dark .studio-page { background: theme('colors.dark.950'); }
 .studio-shell.studio-night.studio-frame { border-radius: 14px; }
 .studio-night--standalone { height: calc(100dvh - 24px); }
 .studio-night--embedded { height: calc(100dvh - 9rem); min-height: 400px; }
 .studio-shell.studio-night .studio-topbar {
   min-height: 66px; gap: 12px 24px; padding: 12px 18px;
-  background: linear-gradient(180deg, #191d21, #14171a);
+  background: var(--st-panel);
 }
 .studio-shell.studio-night .studio-brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--st-accent); box-shadow: none; }
 .studio-shell.studio-night .studio-brand-title { font-size: 14px; letter-spacing: .04em; }
 .studio-shell.studio-night .studio-brand-sub { display: block; max-width: 220px; font-size: 10px; }
-.studio-shell.studio-night .studio-nav { padding: 4px; border-radius: 999px; background: #0e1114; }
-.studio-shell.studio-night .studio-nav-item { position: relative; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; color: #aab2bc; }
-.studio-shell.studio-night .studio-nav-item:hover { background: #1c2228; color: var(--st-text); }
+.studio-shell.studio-night .studio-nav { padding: 4px; border-radius: 999px; background: var(--st-panel-soft); }
+.studio-shell.studio-night .studio-nav-item { position: relative; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; color: var(--st-text-soft); }
+.studio-shell.studio-night .studio-nav-item:hover { background: var(--st-surface); color: var(--st-text); }
 .studio-shell.studio-night .studio-nav-item.is-active { border-color: var(--st-accent-border); background: var(--st-accent-soft); color: var(--st-accent-text); box-shadow: none; }
 .studio-shell.studio-night .studio-nav-item.is-active::after { content: ''; width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: var(--st-accent); }
 .studio-shell.studio-night .studio-topbar-actions .studio-btn { font-size: 11px; min-height: 32px; padding-inline: 10px; color: var(--st-text-soft); }
@@ -47,7 +48,7 @@
 .studio-shell.studio-night .chat-message-list { max-width: 880px; gap: 28px; }
 .studio-shell.studio-night .chat-message-heading { margin-bottom: 10px; }
 .studio-shell.studio-night .chat-markdown { line-height: 1.9; }
-.studio-shell.studio-night .chat-user-text { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: #2d2318; color: #f3e8d9; box-shadow: none; }
+.studio-shell.studio-night .chat-user-text { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: var(--st-accent-soft); color: var(--st-text); box-shadow: none; }
 .studio-shell.studio-night .chat-welcome { min-height: 45vh; }
 .studio-shell.studio-night .chat-examples button { border-radius: 10px; background: var(--st-panel); }
 .studio-shell.studio-night .chat-examples button:hover { background: var(--st-accent-soft); }
@@ -69,23 +70,23 @@
 .studio-shell.studio-night .night-image-composer > form:focus-within { border-color: var(--st-accent-border); }
 .studio-shell.studio-night .night-image-send { border-radius: 10px; }
 .studio-shell.studio-night .night-image-send:enabled { color: var(--st-accent-on); }
-.studio-shell.studio-night .night-user-bubble { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: #2d2318; color: #f3e8d9; }
+.studio-shell.studio-night .night-user-bubble { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: var(--st-accent-soft); color: var(--st-text); }
 .studio-shell.studio-night .night-user-avatar { background: var(--st-accent-soft); color: var(--st-accent-text); }
 .studio-shell.studio-night .night-image-history > div > button { border: 1px dashed var(--st-accent-border); border-radius: 8px; background: var(--st-accent-soft); color: var(--st-accent-text); box-shadow: none; }
 
 /* Real video output fills the cinema canvas; no fabricated media or timing. */
 .studio-shell.studio-night .workbench { border: 0; border-radius: 0; box-shadow: none; }
 .studio-shell.studio-night .wb-rail { background: var(--st-panel); }
-.studio-shell.studio-night .video-studio .results-scroll { padding: 24px; background: radial-gradient(ellipse at 50% 0, rgba(224,138,46,.045), transparent 58%), var(--st-bg); }
+.studio-shell.studio-night .video-studio .results-scroll { padding: 24px; background: radial-gradient(ellipse at 50% 0, color-mix(in srgb, var(--st-accent) 4%, transparent), transparent 58%), var(--st-bg); }
 .studio-shell.studio-night .video-studio .preview-stage { max-width: 1100px; margin-inline: auto; }
 .studio-shell.studio-night .video-studio .generation-card { border-radius: 12px; box-shadow: 0 14px 40px -28px #000; }
-.studio-shell.studio-night .video-studio .card-media { background: #07090b; }
+.studio-shell.studio-night .video-studio .card-media { background: var(--st-panel-soft); }
 .studio-shell.studio-night .video-studio .composer { border-radius: 12px; background: var(--st-bg); box-shadow: none; }
 .studio-shell.studio-night .video-studio .generate-button { border-radius: 9px; box-shadow: none; }
 .studio-shell.studio-night .wb-composer { padding: 12px 24px 18px; border-top: 1px solid var(--st-border); background: var(--st-panel); }
 .studio-shell.studio-night .video-studio .results-header { padding-inline: 20px; }
 .studio-shell.studio-night .video-studio .empty-results { max-width: 640px; margin-inline: auto; }
-.studio-shell.studio-night .asset-media { background: #0a0c0e; }
+.studio-shell.studio-night .asset-media { background: var(--st-panel-soft); }
 .studio-shell.studio-night .asset-card { border-radius: 10px; }
 .studio-shell.studio-night .prompt-grid .studio-card { border-radius: 10px; background: var(--st-panel-soft); }
 .studio-shell.studio-night .config-section { border-radius: 12px; }
@@ -123,4 +124,71 @@
   .studio-shell.studio-night .video-studio .results-header { padding-inline: 12px; }
   .studio-shell.studio-night .studio-panel-head { padding: 12px; }
   .studio-shell.studio-night .config-root { padding: 14px; }
+}
+
+
+/* Mobile prioritizes the conversation and media canvas, with a compact toolbar. */
+@media (max-width: 639px) {
+  .studio-shell.studio-night .studio-topbar { min-height: 46px; padding: 4px 6px; gap: 0; }
+  .studio-shell.studio-night .studio-brand, .studio-shell.studio-night .studio-topbar-actions { display: none; }
+  .studio-shell.studio-night .studio-nav { display: flex; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .studio-shell.studio-night .studio-nav-item { min-height: 38px; flex-shrink: 0; padding: 7px 10px; gap: 5px; font-size: 12px; }
+  .studio-shell.studio-night .text-chat-head, .studio-shell.studio-night .night-image-main > header { min-height: 44px; padding: 6px 10px; }
+  .studio-shell.studio-night .chat-head-text p { display: none; }
+  .studio-shell.studio-night .night-image-main > header > div:first-child > div > div:last-child { display: none; }
+  .studio-shell.studio-night .text-chat-messages, .studio-shell.studio-night .night-image-main > div[aria-live] { padding: 12px 10px 16px; }
+  .studio-shell.studio-night .text-chat-composer { padding: 6px 10px max(6px, env(safe-area-inset-bottom)); }
+  .studio-shell.studio-night .text-chat-options { margin: 0 0 5px; gap: 6px; }
+  .studio-shell.studio-night .chat-option, .studio-shell.studio-night .chat-refresh { height: 28px; }
+  .studio-shell.studio-night .chat-refresh { width: 28px; }
+  .studio-shell.studio-night .chat-input-box { position: relative; min-height: 48px; padding: 6px 48px 6px 10px; }
+  .studio-shell.studio-night .chat-input-box textarea { min-height: 34px; max-height: 96px; padding: 4px 0; line-height: 1.5; }
+  .studio-shell.studio-night .chat-composer-bottom { display: contents; }
+  .studio-shell.studio-night .chat-composer-bottom > span { display: none; }
+  .studio-shell.studio-night .chat-submit { position: absolute; right: 6px; bottom: 6px; width: 36px; height: 36px; }
+  .studio-shell.studio-night .night-image-main > div:has(> .night-image-composer) { padding: 6px 10px max(6px, env(safe-area-inset-bottom)); }
+  .studio-shell.studio-night .night-image-composer > div:first-child { margin-bottom: 5px; padding-inline: 0; }
+  .studio-shell.studio-night .night-image-composer > div:first-child button[aria-expanded] { height: 28px; }
+  .studio-shell.studio-night .night-image-composer > form { gap: 4px; padding: 6px 8px; }
+  .studio-shell.studio-night .night-image-composer textarea { min-height: 32px; max-height: 96px; padding-block: 3px; line-height: 1.5; }
+  .studio-shell.studio-night .night-image-composer form .h-11 { height: 34px; width: 34px; }
+  .studio-shell.studio-night .night-image-composer form .h-9 { height: 32px; width: 32px; }
+  .studio-shell.studio-night .video-studio .results-header { min-height: 44px; padding: 6px 10px; }
+  .studio-shell.studio-night .video-studio .header-text h1 { font-size: 13px; }
+  .studio-shell.studio-night .video-studio .results-scroll { padding: 10px; }
+  .studio-shell.studio-night .wb-composer { padding: 6px 10px max(6px, env(safe-area-inset-bottom)); }
+  .studio-shell.studio-night .video-studio .composer { gap: 6px; padding: 6px; }
+  .studio-shell.studio-night .video-studio .composer-main { gap: 6px; }
+  .studio-shell.studio-night .video-studio .prompt-box textarea { height: 38px; min-height: 38px; max-height: 96px; padding: 4px 2px; font-size: 16px; line-height: 1.5; }
+  .studio-shell.studio-night .video-studio .prompt-bottom { padding: 0 2px 2px; font-size: 9px; line-height: 12px; }
+  .studio-shell.studio-night .video-studio .composer-toolbar { display: flex; flex-wrap: wrap; gap: 4px; }
+  .studio-shell.studio-night .video-studio .creation-modes { width: auto; flex: 1 1 auto; }
+  .studio-shell.studio-night .video-studio .creation-modes button { min-height: 28px; font-size: 11px; padding-inline: 5px; }
+  .studio-shell.studio-night .video-studio .composer-toolbar .wb-popover { width: auto; flex: 1 1 auto; min-width: 0; max-width: 100%; }
+  .studio-shell.studio-night .video-studio .composer-toolbar .wb-chip { height: 28px; width: 100%; min-width: 0; font-size: 11px; }
+  .studio-shell.studio-night .video-studio .send-group { flex: 1 1 100%; justify-content: space-between; gap: 6px; }
+  .studio-shell.studio-night .video-studio .cost-estimate { font-size: 10px; }
+  .studio-shell.studio-night .video-studio .generate-button { height: 34px; min-height: 34px; padding: 6px 10px; font-size: 12px; }
+}
+
+@media (max-width: 639px) {
+  .studio-shell.studio-night .night-image-composer > form { position: relative; display: block; min-height: 48px; padding: 6px 48px 6px 42px; }
+  .studio-shell.studio-night .night-image-composer > form:has(.image-polish-button) { padding-right: 88px; }
+  .studio-shell.studio-night .night-image-composer textarea { min-height: 34px; padding-inline: 0; }
+  .studio-shell.studio-night .image-composer-actions, .studio-shell.studio-night .image-composer-actions > div { display: contents; }
+  .studio-shell.studio-night .image-composer-actions > div:first-child > button { position: absolute; left: 6px; bottom: 6px; }
+  .studio-shell.studio-night .image-composer-actions > div:last-child > button { position: absolute; right: 6px; bottom: 6px; }
+  .studio-shell.studio-night .image-composer-actions > div:last-child > .image-polish-button { right: 46px; }
+  .studio-shell.studio-night .image-ref-strip { margin-left: -34px; margin-right: -40px; }
+  .studio-shell.studio-night form:has(.image-polish-button) > .image-ref-strip { margin-right: -80px; }
+  .studio-shell.studio-night .video-studio .composer-toolbar .creation-modes,
+  .studio-shell.studio-night .video-studio .composer-toolbar .wb-popover { flex: 1 1 calc(50% - 4px); max-width: calc(50% - 2px); }
+  .studio-shell.studio-night .video-studio .composer-toolbar .creation-modes { min-width: 0; }
+  .studio-shell.studio-night .video-studio .creation-modes button { white-space: nowrap; font-size: 10px; gap: 3px; }
+}
+
+.studio-shell.studio-night .studio-theme-toggle { flex-shrink: 0; margin-left: auto; border: 1px solid var(--st-border); background: var(--st-panel); }
+@media (max-width: 639px) {
+  .studio-shell.studio-night .studio-nav { flex: 1 1 0%; width: 0; }
+  .studio-shell.studio-night .studio-theme-toggle { width: 32px; height: 32px; margin-left: 5px; }
 }
