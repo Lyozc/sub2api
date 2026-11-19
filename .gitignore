@@ -174,3 +174,6 @@ issues/
 
 # Creative canvas usage and operations guide
 !docs/creative-studio.md
+
+# Client integration guide for the configured Kling relay
+!docs/KLING-SUB2API-API.md

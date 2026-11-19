@@ -1,11 +1,17 @@
 <template>
-  <section class="video-studio" :aria-label="t('videoStudio.title')">
-    <form class="creation-panel" @submit.prevent="send" @dragover.prevent @drop.prevent="onRefDrop" @paste="onPaste">
-      <div class="panel-heading">
-        <span class="heading-mark" aria-hidden="true"><Icon name="play" size="sm" /></span>
-        <div class="heading-text">
-          <h1>{{ t('videoStudio.creation') }}</h1>
-          <p>{{ t('videoStudio.creationSubtitle') }}</p>
+  <WorkbenchLayout
+    v-model:fullscreen="fullscreen"
+    class="video-studio"
+    :label="t('videoStudio.title')"
+    v-model:rail-collapsed="railCollapsed"
+    :rail-close-label="L.collapseRail"
+  >
+    <template #rail>
+      <div class="rail-head">
+        <button class="icon-button rail-close" type="button" :aria-label="L.collapseRail" @click="railCollapsed = true"><Icon name="x" size="sm" /></button>
+        <div class="results-title">
+          <h2>{{ L.recent }}</h2>
+          <span class="count-badge">{{ totalCount }}</span>
         </div>
         <button
           type="button"
@@ -18,235 +24,373 @@
           <Icon name="plus" size="sm" />
         </button>
       </div>
-      <div class="creation-scroll">
-        <div v-if="initError" class="studio-notice error" role="alert">
-          <span>{{ initError }}</span
-          ><button type="button" @click="retryInit">
-            {{ t('imageStudio.retryInit') }}
-          </button>
-        </div>
-        <div v-if="conversationStorageError && !conversationInitError" class="studio-notice error" role="alert">
-          <span>{{ t('videoStudio.conversationSaveFailed') }}</span
-          ><button type="button" @click="persistConversations">
-            {{ t('imageStudio.retry') }}
-          </button>
-        </div>
-        <div class="model-field">
-          <label for="video-model">{{ t('imageStudio.model') }}</label>
-          <div class="select-wrap">
-            <Icon name="sparkles" size="sm" /><select
-              id="video-model"
-              v-model="selectedModel"
-              data-testid="video-model"
-              :disabled="!modelsReady"
-            >
-              <option v-if="!modelOptions.length" value="">
-                {{ t('videoStudio.chooseModel') }}
-              </option>
-              <option v-for="option in modelOptions" :key="option.value" :value="option.value">
-                {{ option.label }} · {{ option.hint }}
-              </option></select
-            ><Icon name="chevronDown" size="xs" />
-          </div>
-        </div>
-        <div class="creation-modes" role="group" :aria-label="t('videoStudio.generationMode')">
+      <div class="rail-tools">
+        <div class="result-filters" role="group" :aria-label="t('videoStudio.filterResults')">
           <button
-            v-for="value in ['t2v', 'i2v'] as const"
+            v-for="value in resultFilters"
             :key="value"
             type="button"
-            :class="{ selected: mode === value }"
-            :aria-pressed="mode === value"
-            @click="setCreationMode(value)"
+            :class="{ selected: resultFilter === value }"
+            :aria-pressed="resultFilter === value"
+            @click="resultFilter = value"
           >
-            <Icon :name="value === 't2v' ? 'edit' : 'inbox'" size="sm" aria-hidden="true" />{{
-              t(value === 't2v' ? 'videoStudio.modeText2Video' : 'videoStudio.modeImage2Video')
-            }}
+            {{ t(`videoStudio.filter${value}`) }}<span v-if="value === 'active' && activeCount">{{ activeCount }}</span>
           </button>
         </div>
-        <VideoReferenceControls v-if="mode === 'i2v' && hasKlingReferenceControls()" @pick="showPicker = true" />
-        <section v-else-if="mode === 'i2v'" class="frame-section">
-          <div class="field-heading">
-            <h2>{{ t('videoStudio.firstFrame') }}</h2>
-            <button type="button" class="text-action" @click="showPicker = true">
-              <Icon name="inbox" size="xs" />{{ t('videoStudio.materials') }}
-            </button>
-          </div>
-          <div class="frame-upload" :class="{ 'has-image': refImages.length }" :aria-busy="preparingFirstFrame">
-            <img v-if="refImages.length" :src="refImages[0].url" :alt="t('videoStudio.firstFrame')" />
-            <label class="frame-input"
-              ><Icon name="plus" size="lg" /><strong>{{
-                t(refImages.length ? 'videoStudio.replaceFrame' : 'videoStudio.addFrame')
-              }}</strong
-              ><span>{{ t('videoStudio.frameUploadHint') }}</span
-              ><input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                :aria-label="t('videoStudio.addFrame')"
-                @change="onRefFilesChange"
-            /></label>
-            <button
-              v-if="refImages.length"
-              type="button"
-              class="remove-frame icon-button"
-              :aria-label="t('videoStudio.removeFirstFrame')"
-              @click="clearFirstFrame"
-            >
+        <label class="result-search"
+          ><Icon name="search" size="sm" aria-hidden="true" /><input
+            v-model="search"
+            :placeholder="t('videoStudio.searchCreations')"
+            :aria-label="t('videoStudio.searchCreations')"
+        /></label>
+      </div>
+      <div class="legacy-notice">
+        <StudioLegacyHistory kind="video" @imported="reloadImportedHistory" />
+      </div>
+      <ul
+        v-if="conversationsReady && visibleTasks.length"
+        class="rail-list"
+        :aria-label="L.recent"
+        @keydown="onRailKeydown"
+      >
+        <li v-for="task in visibleTasks" :key="task.taskId">
+          <button
+            type="button"
+            class="rail-item"
+            :data-rail-task="task.taskId"
+            :class="{ selected: viewMode === 'preview' && previewTask?.taskId === task.taskId }"
+            :aria-current="viewMode === 'preview' && previewTask?.taskId === task.taskId ? 'true' : undefined"
+            :aria-label="`${L.previewTask}: ${task.prompt}`"
+            @click="selectPreview(task)"
+          >
+            <span class="rail-status" :class="task.status" aria-hidden="true"
+              ><Icon
+                :name="task.status === 'done' ? 'play' : task.status === 'failed' ? 'exclamationCircle' : 'refresh'"
+                size="xs"
+            /></span>
+            <span class="rail-text">
+              <strong>{{ task.prompt }}</strong>
+              <small>{{ task.model }} · {{ task.seconds }}s</small>
+            </span>
+          </button>
+        </li>
+      </ul>
+      <p v-else-if="conversationsReady" class="rail-empty">
+        {{ t(totalCount ? 'videoStudio.noMatchingCreations' : 'videoStudio.emptyTasks') }}
+      </p>
+      <footer class="results-footnote">
+        <Icon name="inbox" size="xs" aria-hidden="true" /><span>{{ t('videoStudio.historyNote') }}</span>
+      </footer>
+    </template>
+
+    <template #header>
+      <div class="results-header">
+        <button
+          type="button"
+          class="icon-button"
+          :aria-label="railCollapsed ? L.expandRail : L.collapseRail"
+          :title="railCollapsed ? L.expandRail : L.collapseRail"
+          :aria-pressed="!railCollapsed"
+          @click="railCollapsed = !railCollapsed"
+        >
+          <Icon name="menu" size="sm" />
+        </button>
+        <div class="header-text">
+          <h1>{{ t('videoStudio.myCreations') }}</h1>
+          <p>
+            {{ activeCount ? t('videoStudio.activeTasks', { n: activeCount }) : t('videoStudio.resultsCaption') }}
+          </p>
+        </div>
+        <div class="result-filters view-switch" role="group" :aria-label="L.viewMode">
+          <button
+            v-for="value in ['gallery', 'preview'] as const"
+            :key="value"
+            type="button"
+            :class="{ selected: viewMode === value }"
+            :aria-pressed="viewMode === value"
+            @click="viewMode = value"
+          >
+            {{ L[value] }}
+          </button>
+        </div>
+        <button
+          type="button"
+          class="icon-button"
+          :aria-label="fullscreen ? L.exitFullscreen : L.fullscreen"
+          :title="fullscreen ? L.exitFullscreen : L.fullscreen"
+          :aria-pressed="fullscreen"
+          @click="fullscreen = !fullscreen"
+        >
+          <Icon :name="fullscreen ? 'x' : 'arrowUp'" size="sm" />
+        </button>
+      </div>
+    </template>
+
+    <div v-if="initError" class="studio-notice error" role="alert">
+      <span>{{ initError }}</span
+      ><button type="button" @click="retryInit">
+        {{ t('imageStudio.retryInit') }}
+      </button>
+    </div>
+    <div v-if="conversationStorageError && !conversationInitError" class="studio-notice error" role="alert">
+      <span>{{ t('videoStudio.conversationSaveFailed') }}</span
+      ><button type="button" @click="persistConversations">
+        {{ t('imageStudio.retry') }}
+      </button>
+    </div>
+    <div ref="resultList" class="results-scroll">
+      <div v-if="conversationInitError" class="empty-results" role="alert">
+        <p>{{ conversationInitError }}</p>
+        <button type="button" class="action primary" @click="initVideoConversations">{{ t('common.retry') }}</button>
+      </div>
+      <div v-else-if="!conversationsReady" class="empty-results" role="status">
+        <span class="button-spinner"></span>
+        <p>{{ t('videoStudio.loadingConversations') }}</p>
+      </div>
+      <template v-else-if="visibleTasks.length">
+        <div v-if="viewMode === 'gallery'" class="results-grid">
+          <VideoGenerationCard
+            v-for="task in visibleTasks"
+            :key="task.taskId"
+            :task="task"
+            :now="now"
+            @reuse="continueCreation"
+          />
+        </div>
+        <div v-else-if="previewTask" class="preview-stage">
+          <VideoGenerationCard :key="previewTask.taskId" :task="previewTask" :now="now" @reuse="continueCreation" />
+        </div>
+        <p v-else class="rail-empty">{{ L.nothingToPreview }}</p>
+      </template>
+      <div v-else class="empty-results">
+        <div class="empty-visual" aria-hidden="true">
+          <div class="empty-frame back"></div>
+          <div class="empty-frame front"><Icon name="play" size="lg" /><span class="frame-corner"></span></div>
+          <span class="empty-spark"><Icon name="sparkles" size="sm" /></span>
+        </div>
+        <h3>
+          {{ t(totalCount ? 'videoStudio.noMatchingCreations' : 'videoStudio.emptyTasks') }}
+        </h3>
+        <p>
+          {{ totalCount ? t('videoStudio.tryOtherFilter') : L.emptyHint }}
+        </p>
+        <div v-if="!totalCount" class="inspirations">
+          <button v-for="idea in inspirations" :key="idea.key" type="button" @click="applyIdea(idea.key)">
+            <Icon :name="idea.icon" size="xs" aria-hidden="true" />{{ t(`videoStudio.ideas.${idea.key}.title`)
+            }}<Icon name="arrowUp" size="xs" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <template #composer>
+      <form class="composer" @submit.prevent="send" @dragover.prevent @drop.prevent="onRefDrop" @paste="onPaste">
+        <div v-if="mode === 'i2v'" class="ref-strip" :aria-busy="preparingFirstFrame">
+          <template v-if="hasKlingReferenceControls()">
+            <figure v-for="item in klingRefThumbs" :key="item.name" class="ref-thumb">
+              <img :src="item.url" :alt="item.name" referrerpolicy="no-referrer" />
+              <button
+                type="button"
+                :aria-label="t('videoStudio.removeReference', { name: item.name })"
+                :disabled="preparingFirstFrame"
+                @click="removeKlingReference(item.name)"
+              >
+                <Icon name="x" size="xs" />
+              </button>
+            </figure>
+          </template>
+          <figure v-else-if="refImages.length" class="ref-thumb">
+            <img :src="refImages[0].url" :alt="t('videoStudio.firstFrame')" />
+            <button type="button" :aria-label="t('videoStudio.removeFirstFrame')" @click="clearFirstFrame">
               <Icon name="x" size="xs" />
             </button>
-          </div>
-          <p v-if="preparingFirstFrame" class="settings-note" role="status">
-            {{ t('videoStudio.preparingFrame') }}
-          </p>
-        </section>
-        <section class="prompt-section">
-          <div class="field-heading">
-            <label for="video-prompt">{{ t('videoStudio.describeIdea') }}</label
-            ><button
-              v-if="polishEnabled"
-              type="button"
-              class="ai-button"
-              data-testid="video-polish"
-              :disabled="!canPolish"
-              :aria-busy="aiLoading"
-              @click="onAIPrompt"
-            >
-              <span v-if="aiLoading" class="button-spinner"></span><Icon v-else name="sparkles" size="xs" />{{
-                t('canvasChat.polish')
-              }}
-            </button>
-          </div>
+          </figure>
+          <button type="button" class="text-action" @click="showPicker = true">
+            <Icon name="inbox" size="xs" />{{ t('videoStudio.materials') }}
+          </button>
+          <span v-if="preparingFirstFrame" class="settings-note" role="status">{{ t('videoStudio.preparingFrame') }}</span>
+          <span v-else-if="referenceHint" class="settings-note setting-error" role="status">{{ referenceHint }}</span>
+        </div>
+        <div class="composer-main">
+          <button
+            type="button"
+            class="plus-button"
+            :aria-label="L.upload"
+            :title="L.upload"
+            :disabled="!conversationsReady || preparingFirstFrame"
+            @click="onPlus"
+          >
+            <Icon name="plus" size="md" />
+          </button>
+          <input
+            ref="fileInput"
+            class="visually-hidden"
+            type="file"
+            tabindex="-1"
+            accept="image/png,image/jpeg,image/webp"
+            :aria-label="t('videoStudio.addFrame')"
+            @change="onRefFilesChange"
+          />
           <div class="prompt-box">
+            <label for="video-prompt" class="visually-hidden">{{ t('videoStudio.describeIdea') }}</label>
             <textarea
               id="video-prompt"
               ref="promptInput"
               v-model="prompt"
               data-testid="video-prompt"
               :maxlength="capabilities.prompt_max"
-              rows="5"
+              rows="2"
               :disabled="!conversationsReady"
               :placeholder="t('videoStudio.promptPlaceholder')"
               @keydown="onComposerKeydown"
             ></textarea>
             <div class="prompt-bottom">
-              <span>{{ t('videoStudio.promptGuide') }}</span
+              <span>{{ t('videoStudio.shortcutHint') }}</span
               ><span>{{ prompt.length }} / {{ capabilities.prompt_max }}</span>
             </div>
           </div>
-          <p v-if="contextTaskId !== null" class="settings-note reused-note">
-            {{ t('videoStudio.parametersLoaded')
-            }}<button type="button" class="text-action" @click="contextTaskId = null">
-              {{ t('videoStudio.clearContext') }}
-            </button>
-          </p>
-        </section>
-        <details class="polish-settings">
-          <summary>
-            <Icon name="sparkles" size="xs" />{{ t('canvasChat.polishSettings')
-            }}<span>{{ t(polishEnabled ? 'videoStudio.enabled' : 'videoStudio.disabled') }}</span
-            ><Icon name="chevronDown" size="xs" />
-          </summary>
-          <div class="polish-content">
+        </div>
+        <p v-if="contextTaskId !== null" class="settings-note reused-note">
+          {{ t('videoStudio.parametersLoaded')
+          }}<button type="button" class="text-action" @click="contextTaskId = null">
+            {{ t('videoStudio.clearContext') }}
+          </button>
+        </p>
+        <div class="composer-toolbar">
+          <div class="creation-modes" role="group" :aria-label="L.mode">
             <button
+              v-for="value in ['t2v', 'i2v'] as const"
+              :key="value"
               type="button"
-              role="switch"
-              class="polish-toggle"
-              :aria-checked="polishEnabled"
-              @click="togglePolish"
+              :class="{ selected: mode === value }"
+              :aria-pressed="mode === value"
+              @click="setCreationMode(value)"
             >
-              <span>{{ t('canvasChat.polish') }}</span
-              ><span class="switch-track" :class="{ enabled: polishEnabled }"><i></i></span></button
-            ><template v-if="polishEnabled"
-              ><label class="ai-field"
-                >{{ t('canvasChat.polishKey')
-                }}<select :value="aiKeyId ?? ''" @change="setAIKey(($event.target as HTMLSelectElement).value || null)">
-                  <option value="">{{ t('canvas.aiNoKeys') }}</option>
-                  <option v-for="option in keyOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select></label
-              ><label class="ai-field"
-                >{{ t('canvasChat.polishModel')
-                }}<select
-                  :value="aiModel"
-                  :disabled="!aiModels.length"
-                  @change="setAIModel(($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-if="!aiModels.length" value="">
-                    {{ t('canvas.aiNoModels') }}
-                  </option>
-                  <option v-for="value in aiModels" :key="value" :value="value">
-                    {{ value }}
-                  </option>
-                </select></label
-              ></template
-            >
+              <Icon :name="value === 't2v' ? 'edit' : 'inbox'" size="xs" aria-hidden="true" />{{
+                t(value === 't2v' ? 'videoStudio.modeText2Video' : 'videoStudio.modeImage2Video')
+              }}
+            </button>
           </div>
-        </details>
-        <section class="settings-panel" :aria-label="t('videoStudio.videoSettings')">
-          <div class="field-heading">
-            <h2>{{ t('videoStudio.videoSettings') }}</h2>
-            <Icon name="slidersHorizontal" size="xs" />
-          </div>
-          <VideoParameterControls
-            v-model:resolution="selectedResolution"
-            v-model:duration="seconds"
-            v-model:ratio="videoSize"
-            v-model:quantity="quantity"
-            :resolution-options="resolutionOptions"
-            :supported-resolutions="supportedResolutions"
-            :duration-min="durationRange.min"
-            :duration-max="durationRange.max"
-            :duration-step="durationRange.step"
-            :duration-ticks="durationRange.ticks"
-            :allowed-durations="capabilities.durations"
-            :ratios="aspectOptions"
-            :labels="parameterLabels"
-          />
-          <template v-if="isKling && hasAdvancedSettings"
-            ><div v-if="capabilities.modes.length" class="setting-field">
-              <h3>{{ t('videoStudio.generationMode') }}</h3>
-              <div class="setting-choices">
-                <button
-                  v-for="value in capabilities.modes"
-                  :key="value"
-                  type="button"
-                  :class="{ selected: klingSettings.mode === value }"
-                  :aria-pressed="klingSettings.mode === value"
-                  @click="klingSettings.mode = value as 'std' | 'pro'"
-                >
-                  {{ t(value === 'pro' ? 'videoStudio.professionalMode' : 'videoStudio.standardMode') }}
-                </button>
-              </div>
+
+          <WorkbenchPopover
+            :label="t('imageStudio.model')"
+            :width="340"
+            :disabled="!modelsReady"
+            testid="video-model"
+          >
+            <template #trigger>
+              <Icon name="sparkles" size="xs" aria-hidden="true" /><span class="chip-text">{{
+                selectedModelOption ? selectedModelOption.id : L.selectModel
+              }}</span
+              ><Icon name="chevronDown" size="xs" aria-hidden="true" />
+            </template>
+            <template #default="{ close }">
+            <h3 class="pop-title" id="video-model">{{ t('imageStudio.model') }}</h3>
+            <p v-if="!modelOptions.length" class="settings-note">{{ t('videoStudio.chooseModel') }}</p>
+            <div v-else class="model-options" role="radiogroup" aria-labelledby="video-model">
+              <button
+                v-for="option in modelOptions"
+                :key="option.value"
+                type="button"
+                role="radio"
+                class="model-option"
+                :class="{ selected: selectedModel === option.value }"
+                :aria-checked="selectedModel === option.value"
+                :data-model-key="option.value"
+                @click="chooseModel(option.value, close)"
+              >
+                <strong>{{ option.label }}</strong><small>{{ option.hint }}</small>
+              </button>
             </div>
-            <div v-if="capabilities.sound" class="setting-field">
-              <h3>{{ t('videoStudio.sound') }}</h3>
-              <div class="setting-choices">
-                <button
-                  v-for="value in ['', 'on', 'off'] as const"
-                  :key="value"
-                  type="button"
-                  :class="{ selected: klingSettings.sound === value }"
-                  :aria-pressed="klingSettings.sound === value"
-                  :disabled="value === 'on' && !audioAllowed"
-                  @click="klingSettings.sound = value"
-                >
-                  {{
-                    t(
-                      value === 'on'
-                        ? 'videoStudio.soundOn'
-                        : value === 'off'
-                          ? 'videoStudio.soundOff'
-                          : 'videoStudio.upstreamDefault'
-                    )
-                  }}
-                </button>
-              </div>
-              <p v-if="!audioAllowed" class="settings-note">
-                {{ t('videoStudio.audioResolutionHint') }}
-              </p>
+            </template>
+          </WorkbenchPopover>
+
+          <WorkbenchPopover
+            v-if="mode === 'i2v' && hasKlingReferenceControls()"
+            ref="refPopover"
+            :label="L.references"
+            :width="400"
+          >
+            <template #trigger>
+              <Icon name="inbox" size="xs" aria-hidden="true" /><span class="chip-text">{{
+                t(klingReferences.mode === 'frames' ? 'videoStudio.referenceFrames' : 'videoStudio.referenceOmni')
+              }}</span>
+            </template>
+            <VideoReferenceControls @pick="showPicker = true" />
+          </WorkbenchPopover>
+
+          <WorkbenchPopover :label="L.output" :width="380">
+            <template #trigger>
+              <Icon name="slidersHorizontal" size="xs" aria-hidden="true" /><span class="chip-text">{{
+                outputSummary
+              }}</span>
+            </template>
+            <div class="settings-panel">
+              <VideoParameterControls
+                v-model:resolution="selectedResolution"
+                v-model:duration="seconds"
+                v-model:ratio="videoSize"
+                v-model:quantity="quantity"
+                :resolution-options="resolutionOptions"
+                :supported-resolutions="supportedResolutions"
+                :duration-min="durationRange.min"
+                :duration-max="durationRange.max"
+                :duration-step="durationRange.step"
+                :duration-ticks="durationRange.ticks"
+                :allowed-durations="capabilities.durations"
+                :ratios="aspectOptions"
+                :labels="parameterLabels"
+              />
             </div>
-            <details v-if="capabilities.negative_prompt || capabilities.cfg_scale" class="advanced-settings">
-              <summary>{{ t('videoStudio.advancedSettings') }}</summary>
+          </WorkbenchPopover>
+
+          <WorkbenchPopover :label="L.advanced" :width="360">
+            <template #trigger>
+              <Icon name="cog" size="xs" aria-hidden="true" /><span class="chip-text">{{ L.advanced }}</span>
+            </template>
+            <template v-if="isKling && hasAdvancedSettings"
+              ><div v-if="capabilities.modes.length" class="setting-field">
+                <h3>{{ t('videoStudio.generationMode') }}</h3>
+                <div class="setting-choices">
+                  <button
+                    v-for="value in capabilities.modes"
+                    :key="value"
+                    type="button"
+                    :class="{ selected: klingSettings.mode === value }"
+                    :aria-pressed="klingSettings.mode === value"
+                    @click="klingSettings.mode = value as 'std' | 'pro'"
+                  >
+                    {{ t(value === 'pro' ? 'videoStudio.professionalMode' : 'videoStudio.standardMode') }}
+                  </button>
+                </div>
+              </div>
+              <div v-if="capabilities.sound" class="setting-field">
+                <h3>{{ t('videoStudio.sound') }}</h3>
+                <div class="setting-choices">
+                  <button
+                    v-for="value in ['', 'on', 'off'] as const"
+                    :key="value"
+                    type="button"
+                    :class="{ selected: klingSettings.sound === value }"
+                    :aria-pressed="klingSettings.sound === value"
+                    :disabled="value === 'on' && !audioAllowed"
+                    @click="klingSettings.sound = value"
+                  >
+                    {{
+                      t(
+                        value === 'on'
+                          ? 'videoStudio.soundOn'
+                          : value === 'off'
+                            ? 'videoStudio.soundOff'
+                            : 'videoStudio.upstreamDefault'
+                      )
+                    }}
+                  </button>
+                </div>
+                <p v-if="!audioAllowed" class="settings-note">
+                  {{ t('videoStudio.audioResolutionHint') }}
+                </p>
+              </div>
               <label v-if="capabilities.negative_prompt" class="ai-field" for="video-negative-prompt"
                 >{{ t('videoStudio.negativePrompt')
                 }}<textarea
@@ -274,105 +418,80 @@
                   t('videoStudio.cfgScaleHint')
                 }}</span></label
               >
-            </details>
-          </template>
-        </section>
-      </div>
-      <footer class="creation-footer">
-        <div class="cost-estimate" data-testid="video-cost-estimate" aria-live="polite">
+            </template>
+            <div class="polish-content">
+              <h3 class="pop-title">{{ t('canvasChat.polishSettings') }}</h3>
+              <button
+                type="button"
+                role="switch"
+                class="polish-toggle"
+                :aria-checked="polishEnabled"
+                @click="togglePolish"
+              >
+                <span>{{ t('canvasChat.polish') }}</span
+                ><span class="switch-track" :class="{ enabled: polishEnabled }"><i></i></span></button
+              ><template v-if="polishEnabled"
+                ><label class="ai-field"
+                  >{{ t('canvasChat.polishKey')
+                  }}<select :value="aiKeyId ?? ''" @change="setAIKey(($event.target as HTMLSelectElement).value || null)">
+                    <option value="">{{ t('canvas.aiNoKeys') }}</option>
+                    <option v-for="option in keyOptions" :key="option.value" :value="option.value">
+                      {{ option.label }}
+                    </option>
+                  </select></label
+                ><label class="ai-field"
+                  >{{ t('canvasChat.polishModel')
+                  }}<select
+                    :value="aiModel"
+                    :disabled="!aiModels.length"
+                    @change="setAIModel(($event.target as HTMLSelectElement).value)"
+                  >
+                    <option v-if="!aiModels.length" value="">
+                      {{ t('canvas.aiNoModels') }}
+                    </option>
+                    <option v-for="value in aiModels" :key="value" :value="value">
+                      {{ value }}
+                    </option>
+                  </select></label
+                ></template
+              >
+            </div>
+          </WorkbenchPopover>
+
+          <button
+            v-if="polishEnabled"
+            type="button"
+            class="ai-button"
+            data-testid="video-polish"
+            :disabled="!canPolish"
+            :aria-busy="aiLoading"
+            @click="onAIPrompt"
+          >
+            <span v-if="aiLoading" class="button-spinner"></span><Icon v-else name="sparkles" size="xs" />{{
+              t('canvasChat.polish')
+            }}
+          </button>
+
+          <div class="send-group">
+            <div class="cost-estimate" data-testid="video-cost-estimate" aria-live="polite">
               <strong>{{ preparingFirstFrame ? t('videoStudio.preparingFrame') : estimatedCost }}</strong>
               <small v-if="estimateBreakdown && !preparingFirstFrame" data-testid="video-cost-breakdown">{{ estimateBreakdown }}</small>
             </div>
-        <button class="generate-button" data-testid="video-send" type="submit" :disabled="!canSend">
-          <span v-if="generating" class="button-spinner" aria-hidden="true"></span><Icon v-else name="sparkles" size="sm" aria-hidden="true" />{{
-            generating ? t('videoStudio.batchGenerating') : t('videoStudio.generateN', { n: quantity })
-          }}
-        </button>
-        <p class="shortcut-hint">{{ t('videoStudio.shortcutHint') }}</p>
-      </footer>
-    </form>
-    <main class="results-panel">
-      <header class="results-header">
-        <div>
-          <div class="results-title">
-            <h2>{{ t('videoStudio.myCreations') }}</h2>
-            <span class="count-badge">{{ totalCount }}</span>
-          </div>
-          <p>
-            {{ activeCount ? t('videoStudio.activeTasks', { n: activeCount }) : t('videoStudio.resultsCaption') }}
-          </p>
-        </div>
-        <button type="button" class="reset-button" :disabled="!conversationsReady" @click="startNew">
-          <Icon name="plus" size="xs" aria-hidden="true" />{{ t('videoStudio.newCreation') }}
-        </button>
-      </header>
-      <div class="results-toolbar">
-        <div class="result-filters" role="group" :aria-label="t('videoStudio.filterResults')">
-          <button
-            v-for="value in resultFilters"
-            :key="value"
-            type="button"
-            :class="{ selected: resultFilter === value }"
-            :aria-pressed="resultFilter === value"
-            @click="resultFilter = value"
-          >
-            {{ t(`videoStudio.filter${value}`) }}<span v-if="value === 'active' && activeCount">{{ activeCount }}</span>
-          </button>
-        </div>
-        <label class="result-search"
-          ><Icon name="search" size="sm" aria-hidden="true" /><input
-            v-model="search"
-            :placeholder="t('videoStudio.searchCreations')"
-            :aria-label="t('videoStudio.searchCreations')"
-        /></label>
-      </div>
-      <div class="legacy-notice">
-        <StudioLegacyHistory kind="video" @imported="reloadImportedHistory" />
-      </div>
-      <div ref="resultList" class="results-scroll">
-        <div v-if="conversationInitError" class="empty-results" role="alert">
-          <p>{{ conversationInitError }}</p>
-          <button type="button" class="action primary" @click="initVideoConversations">{{ t('common.retry') }}</button>
-        </div>
-        <div v-else-if="!conversationsReady" class="empty-results" role="status">
-          <span class="button-spinner"></span>
-          <p>{{ t('videoStudio.loadingConversations') }}</p>
-        </div>
-        <div v-else-if="visibleTasks.length" class="results-grid">
-          <VideoGenerationCard
-            v-for="task in visibleTasks"
-            :key="task.taskId"
-            :task="task"
-            :now="now"
-            @reuse="continueCreation"
-          />
-        </div>
-        <div v-else class="empty-results">
-          <div class="empty-visual" aria-hidden="true">
-            <div class="empty-frame back"></div>
-            <div class="empty-frame front"><Icon name="play" size="lg" /><span class="frame-corner"></span></div>
-            <span class="empty-spark"><Icon name="sparkles" size="sm" /></span>
-          </div>
-          <h3>
-            {{ t(totalCount ? 'videoStudio.noMatchingCreations' : 'videoStudio.emptyTasks') }}
-          </h3>
-          <p>
-            {{ t(totalCount ? 'videoStudio.tryOtherFilter' : 'videoStudio.workspaceEmptyHint') }}
-          </p>
-          <div v-if="!totalCount" class="inspirations">
-            <button v-for="idea in inspirations" :key="idea.key" type="button" @click="applyIdea(idea.key)">
-              <Icon :name="idea.icon" size="xs" aria-hidden="true" />{{ t(`videoStudio.ideas.${idea.key}.title`)
-              }}<Icon name="arrowUp" size="xs" aria-hidden="true" />
+            <button class="generate-button" data-testid="video-send" type="submit" :disabled="!canSend">
+              <span v-if="generating" class="button-spinner" aria-hidden="true"></span
+              ><Icon v-else name="sparkles" size="sm" aria-hidden="true" />{{
+                generating ? t('videoStudio.batchGenerating') : t('videoStudio.generateN', { n: quantity })
+              }}
             </button>
           </div>
         </div>
-      </div>
-      <footer class="results-footnote">
-        <Icon name="inbox" size="xs" aria-hidden="true" /><span>{{ t('videoStudio.historyNote') }}</span>
-      </footer>
-    </main>
-    <CanvasImagePicker v-if="showPicker" :max-select="1" @close="showPicker = false" @import="onImportFromImage" />
-  </section>
+      </form>
+    </template>
+
+    <template #overlay>
+      <CanvasImagePicker v-if="showPicker" :max-select="1" @close="showPicker = false" @import="onImportFromImage" />
+    </template>
+  </WorkbenchLayout>
 </template>
 
 <script setup lang="ts">
@@ -386,6 +505,8 @@ import VideoParameterControls from './VideoParameterControls.vue'
 import VideoReferenceControls from './VideoReferenceControls.vue'
 import { validateVideoReferences } from '@/composables/videoReferences'
 import CanvasImagePicker from './CanvasImagePicker.vue'
+import WorkbenchLayout from './WorkbenchLayout.vue'
+import WorkbenchPopover from './WorkbenchPopover.vue'
 import type { ToolbarValue } from './chatdraw/format'
 import { sessionOwnerKey } from '@/composables/studioSession'
 import {
@@ -422,6 +543,8 @@ import {
   preparingFirstFrame,
   hasKlingReferenceControls,
   activeKlingReferences,
+  klingReferences,
+  removeKlingReference,
   selectedVideoCapabilities,
   loadHistory,
   type VideoTask,
@@ -781,8 +904,122 @@ function send() {
     contextTaskId.value = null
     resultFilter.value = 'all'
     search.value = ''
+    previewTaskId.value = created[0].taskId
     void nextTick(() => resultList.value?.scrollTo({ top: 0, behavior: 'smooth' }))
   }
+}
+
+// ---- Workbench layout state (UI only; never triggers generation) ----
+const { locale } = useI18n()
+const localMessages = {
+  zh: {
+    workbench: '视频工作台',
+    recent: '最近创作',
+    gallery: '画廊',
+    preview: '预览',
+    viewMode: '结果视图',
+    previewTask: '预览此作品',
+    fullscreen: '全屏',
+    exitFullscreen: '退出全屏',
+    collapseRail: '收起侧栏',
+    expandRail: '展开侧栏',
+    upload: '上传参考图',
+    references: '参考素材',
+    mode: '创作模式',
+    advanced: '高级设置',
+    output: '输出设置',
+    noReference: '图生视频需要上传参考图',
+    nothingToPreview: '选择左侧作品进行预览',
+    selectModel: '选择模型',
+    defaultRes: '默认',
+    emptyHint: '在下方描述画面、选择模型与参数，开始创作你的第一支视频。'
+  },
+  en: {
+    workbench: 'Video workbench',
+    recent: 'Recent creations',
+    gallery: 'Gallery',
+    preview: 'Preview',
+    viewMode: 'Result view',
+    previewTask: 'Preview this creation',
+    fullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit fullscreen',
+    collapseRail: 'Collapse sidebar',
+    expandRail: 'Expand sidebar',
+    upload: 'Upload reference image',
+    references: 'References',
+    mode: 'Creation mode',
+    advanced: 'Advanced settings',
+    output: 'Output settings',
+    noReference: 'Image-to-video needs a reference image',
+    nothingToPreview: 'Pick a creation from the sidebar to preview',
+    selectModel: 'Select model',
+    defaultRes: 'Default',
+    emptyHint: 'Describe your scene below, choose a model and settings, and create your first video.'
+  }
+} as const
+const L = computed(() => (String(locale.value).toLowerCase().startsWith('zh') ? localMessages.zh : localMessages.en))
+const viewMode = ref<'gallery' | 'preview'>('gallery')
+const previewTaskId = ref<number | null>(null)
+const compactViewport = window.matchMedia('(max-width: 860px)')
+const railCollapsed = ref(compactViewport.matches)
+function onCompactViewport(event: MediaQueryListEvent) { if (event.matches) railCollapsed.value = true }
+const fullscreen = ref(false)
+const fileInput = ref<HTMLInputElement>()
+const refPopover = ref<{ open: () => void; close: () => void }>()
+const previewTask = computed(
+  () => visibleTasks.value.find((task) => task.taskId === previewTaskId.value) || visibleTasks.value[0]
+)
+function selectPreview(task: VideoTask) {
+  previewTaskId.value = task.taskId
+  viewMode.value = 'preview'
+}
+function onRailKeydown(event: KeyboardEvent) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  const list = visibleTasks.value
+  if (!list.length) return
+  event.preventDefault()
+  const index = list.findIndex((task) => task.taskId === previewTask.value?.taskId)
+  const next =
+    event.key === 'Home' ? 0 : event.key === 'End' ? list.length - 1
+      : Math.min(list.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))
+  selectPreview(list[next])
+  const target = event.currentTarget as HTMLElement | null
+  void nextTick(() =>
+    target
+      ?.querySelector<HTMLElement>(`[data-rail-task="${list[next].taskId}"]`)
+      ?.focus()
+  )
+}
+const selectedModelOption = computed(() => models.value.find((o) => modelKey(o) === selectedModel.value))
+function chooseModel(value: string, close: (returnFocus?: boolean) => void) {
+  selectedModel.value = value
+  close(true)
+}
+const outputSummary = computed(() => {
+  const res = selectedResolution.value
+  const ratio = aspectOptions.value.find((option) => option.value === videoSize.value)?.label || ''
+  return [res ? (res === '4k' ? '4K' : res) : L.value.defaultRes, `${seconds.value}${t('videoStudio.secondsUnit')}`, ratio, `×${quantity.value}`]
+    .filter(Boolean)
+    .join(' · ')
+})
+const klingRefThumbs = computed(() => {
+  if (mode.value !== 'i2v' || !hasKlingReferenceControls()) return []
+  const draft = klingReferences.value
+  return draft.mode === 'frames' ? draft.frames : draft.images
+})
+const referenceHint = computed(() => {
+  if (mode.value !== 'i2v') return ''
+  if (hasKlingReferenceControls()) {
+    const error = validateVideoReferences(activeKlingReferences(), capabilities.value.references, klingSettings.value.sound)
+    return error ? t(`videoStudio.${error}`) : ''
+  }
+  return refImages.value.length ? '' : L.value.noReference
+})
+async function onPlus() {
+  if (mode.value !== 'i2v') setCreationMode('i2v')
+  await nextTick()
+  if (hasKlingReferenceControls()) refPopover.value?.open()
+  else fileInput.value?.click()
 }
 function onComposerKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
@@ -897,6 +1134,7 @@ function syncTicker() {
 watch(() => tasks.value.map(task => `${task.status}:${task.archived}`).join(','), syncTicker)
 onMounted(() => {
   window.addEventListener('studio-session-ended', onSessionEnded)
+  compactViewport.addEventListener('change', onCompactViewport)
   retryInit()
   void initVideoConversations()
   void initAIOptions()
@@ -905,6 +1143,7 @@ onMounted(() => {
 onUnmounted(() => {
   invalidatePolish()
   window.removeEventListener('studio-session-ended', onSessionEnded)
+  compactViewport.removeEventListener('change', onCompactViewport)
   window.clearInterval(tickTimer)
 })
 </script>
@@ -931,17 +1170,7 @@ onUnmounted(() => {
   --vs-success: var(--st-accent-text, #047857);
   --vs-danger: var(--st-danger, #d4493f);
   --vs-error-bg: var(--st-danger-soft, #fef2f2);
-  display: grid;
-  grid-template-columns: 388px minmax(0, 1fr);
-  height: 100%;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--st-bg, #f4f6f8);
-  color: var(--vs-text);
-  border: 1px solid var(--vs-border);
-  border-radius: 18px;
-  box-shadow: var(--st-shadow, 0 10px 30px -22px rgba(16, 24, 40, 0.35));
+  /* Layout lives in WorkbenchLayout.vue; this rule only supplies palette tokens. */
 }
 /* Dark fallbacks only matter when this panel renders outside the shell.
  * Inside the shell, .dark .studio-shell already supplies the --st-* values. */
@@ -964,7 +1193,6 @@ onUnmounted(() => {
   --vs-success: var(--st-accent-text, #6ee7b7);
   --vs-danger: var(--st-danger, #fca5a5);
   --vs-error-bg: var(--st-danger-soft, rgba(185, 28, 28, 0.18));
-  background: var(--st-bg, #0e1626);
 }
 button,
 input,
@@ -993,49 +1221,13 @@ select {
   min-width: 0;
   color: var(--vs-text);
 }
-.creation-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  border-right: 1px solid var(--vs-border);
-  background: var(--vs-panel);
-}
-.panel-heading {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 16px 22px;
-  border-bottom: 1px solid var(--vs-border);
-  flex-shrink: 0;
-}
-.heading-mark {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--vs-accent-border);
-  border-radius: 9px;
-  background: var(--vs-accent-soft);
-  color: var(--vs-accent-text);
-}
-.heading-text {
-  min-width: 0;
-  flex: 1;
-}
 h1 {
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.2px;
 }
-.heading-text p {
-  margin-top: 2px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--vs-muted);
-}
 .icon-button {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1046,64 +1238,14 @@ h1 {
   color: var(--vs-secondary);
   background: var(--vs-panel);
 }
-.creation-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 18px 22px 22px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--vs-border-strong) transparent;
-}
-.model-field label,
-.field-heading label,
-.field-heading h2 {
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.model-field label {
-  display: block;
-  margin-bottom: 8px;
-}
-.select-wrap {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 12px;
-  border: 1px solid var(--vs-border);
-  border-radius: 11px;
-  height: 44px;
-  background: var(--vs-surface);
-}
-.select-wrap:focus-within {
-  border-color: var(--vs-accent-border);
-}
-.select-wrap > svg:first-child {
-  color: var(--vs-secondary);
-  flex-shrink: 0;
-}
-select {
-  appearance: none;
-  background: transparent;
-  font-size: 12px;
-  width: 100%;
-  outline: none;
-  border: 0;
-}
 select option {
   background: var(--vs-panel);
   color: var(--vs-text);
 }
-.select-wrap > svg:last-child {
-  pointer-events: none;
-  color: var(--vs-muted);
-  flex-shrink: 0;
-}
 .creation-modes {
   display: flex;
   gap: 2px;
-  margin: 16px 0 20px;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--vs-border);
   border-radius: 11px;
   background: var(--vs-surface);
@@ -1114,10 +1256,11 @@ select option {
   min-width: 0;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 6px;
-  border-radius: 8px;
-  font-size: 12.5px;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 12px;
   color: var(--vs-secondary);
   white-space: nowrap;
 }
@@ -1130,98 +1273,265 @@ select option {
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
 }
-.field-heading {
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* ---- Rail ---- */
+.rail-close { display: none; }
+.rail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 11px;
+  padding: 14px 14px 10px;
 }
-.field-heading > svg {
-  color: var(--vs-muted);
-}
-.frame-section {
-  margin-bottom: 22px;
-}
-.frame-upload {
-  position: relative;
-  min-height: 154px;
-  border: 1px dashed var(--vs-muted);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--vs-bg);
-}
-.frame-upload > img {
-  width: 100%;
-  height: 180px;
-  object-fit: contain;
-}
-.frame-input {
-  position: relative;
+.rail-tools {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 8px;
+  padding: 0 14px 10px;
+}
+.rail-tools .result-filters button {
+  flex: 1;
   justify-content: center;
+  padding: 0 6px;
+}
+.rail-tools .result-search {
+  width: 100%;
+}
+.rail-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vs-border-strong) transparent;
+}
+.rail-item {
+  display: flex;
+  align-items: center;
   gap: 9px;
-  min-height: 154px;
-  cursor: pointer;
+  width: 100%;
+  padding: 8px;
+  border-radius: 10px;
+  text-align: left;
   color: var(--vs-secondary);
 }
-.frame-input strong {
-  font-size: 12px;
-  font-weight: 500;
+.rail-item:hover {
+  background: var(--vs-surface);
 }
-.frame-input span {
-  font-size: 10px;
+.rail-item.selected {
+  background: var(--vs-accent-soft);
+  color: var(--vs-text);
+  box-shadow: inset 0 0 0 1px var(--vs-accent-border);
+}
+.rail-status {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--vs-surface);
   color: var(--vs-muted);
 }
-.frame-input input {
-  position: absolute;
-  inset: 0;
+.rail-status.done {
+  color: var(--vs-success);
+}
+.rail-status.failed {
+  color: var(--vs-danger);
+  background: var(--vs-error-bg);
+}
+.rail-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rail-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+}
+.rail-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--vs-muted);
+}
+.rail-empty {
+  flex: 1;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--vs-muted);
+  text-align: center;
+}
+/* ---- Header ---- */
+.header-text {
+  flex: 1;
+  min-width: 0;
+}
+.view-switch {
+  flex-shrink: 0;
+}
+.preview-stage {
+  max-width: 880px;
+  margin: 0 auto;
+}
+/* ---- Composer ---- */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--vs-border);
+  border-radius: 16px;
+  background: var(--vs-panel);
+  box-shadow: var(--st-shadow, 0 16px 36px -24px rgba(16, 24, 40, 0.45));
+}
+.composer:focus-within {
+  border-color: var(--vs-accent-border);
+}
+.ref-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  max-height: 74px;
+}
+.ref-thumb {
+  flex-shrink: 0;
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin: 0;
+  border: 1px solid var(--vs-border);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--vs-surface);
+}
+.ref-thumb img {
   width: 100%;
   height: 100%;
-  opacity: 0;
-  cursor: pointer;
+  object-fit: cover;
 }
-.has-image .frame-input {
+.ref-thumb button {
   position: absolute;
-  inset: 0;
-  min-height: 0;
-  opacity: 0;
-  background: #0008;
-  color: #fff;
-  transition: opacity 0.15s;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--vs-panel);
+  color: var(--vs-text);
+  border: 1px solid var(--vs-border);
 }
-.has-image:hover .frame-input,
-.has-image:focus-within .frame-input {
-  opacity: 1;
+.ref-strip .settings-note {
+  margin-top: 0;
 }
-.remove-frame {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
+.composer-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.plus-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px dashed var(--vs-border-strong);
+  border-radius: 11px;
+  background: var(--vs-surface);
+  color: var(--vs-secondary);
+}
+.plus-button:hover:enabled {
+  border-color: var(--vs-accent-border);
+  color: var(--vs-accent-text);
 }
 .prompt-box {
-  border: 1px solid var(--vs-border);
-  border-radius: 11px;
-  background: var(--vs-bg);
-  overflow: hidden;
-}
-.prompt-box:focus-within {
-  border-color: var(--vs-accent-border);
+  flex: 1;
+  min-width: 0;
 }
 .prompt-box textarea {
   display: block;
   width: 100%;
-  min-height: 146px;
+  min-height: 52px;
+  max-height: 28vh;
   resize: vertical;
   background: transparent;
-  padding: 13px;
-  font-size: 13px;
-  line-height: 1.8;
+  padding: 6px 2px;
+  font-size: 13.5px;
+  line-height: 1.7;
   outline: none;
   border: 0;
+}
+.composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.send-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+.pop-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.model-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.model-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  text-align: left;
+  color: var(--vs-text);
+}
+.model-option:hover {
+  background: var(--vs-surface);
+}
+.model-option.selected {
+  border-color: var(--vs-accent-border);
+  background: var(--vs-accent-soft);
+}
+.model-option strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.model-option small {
+  font-size: 11px;
+  color: var(--vs-muted);
 }
 textarea::placeholder {
   color: var(--vs-muted);
@@ -1254,30 +1564,15 @@ textarea::placeholder {
   background: var(--vs-surface);
   color: var(--vs-muted);
 }
-.polish-settings {
-  border-bottom: 1px solid var(--vs-border);
-  margin: 13px 0 20px;
-  padding-bottom: 15px;
-}
-.polish-settings summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--vs-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  list-style: none;
-}
-summary::-webkit-details-marker {
-  display: none;
-}
-.polish-settings summary span {
-  margin-left: auto;
-  color: var(--vs-muted);
-  font-size: 11px;
-}
 .polish-content {
-  padding-top: 15px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vs-border);
+}
+.polish-content:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .polish-toggle {
   display: flex;
@@ -1325,13 +1620,7 @@ summary::-webkit-details-marker {
   font-size: 12px;
 }
 .settings-panel {
-  padding: 14px;
-  border: 1px solid var(--vs-border);
-  border-radius: 13px;
-  background: var(--vs-bg);
-}
-.settings-panel .field-heading {
-  margin-bottom: 14px;
+  min-width: 0;
 }
 .settings-panel :deep(.vpc-heading) {
   font-size: 12px;
@@ -1379,35 +1668,27 @@ summary::-webkit-details-marker {
   background: var(--vs-panel);
   color: var(--vs-text);
 }
-.advanced-settings {
-  font-size: 12px;
-  margin-top: 18px;
-  color: var(--vs-secondary);
-}
-.advanced-settings summary {
-  cursor: pointer;
+.setting-field:first-child {
+  margin-top: 0;
 }
 .setting-error {
   color: var(--vs-danger);
-}
-.creation-footer {
-  padding: 13px 22px 14px;
-  border-top: 1px solid var(--vs-border);
-  background: var(--vs-panel);
-  flex-shrink: 0;
 }
 .cost-estimate strong { display: block; font-weight: 600; color: var(--vs-accent-text); }
 .cost-estimate small { display: block; margin-top: 2px; font-size: 10px; font-weight: 400; color: var(--vs-muted); }
 .cost-estimate {
   color: var(--vs-secondary);
   font-size: 11px;
-  margin-bottom: 9px;
-  line-height: 1.6;
+  line-height: 1.4;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .generate-button {
   display: flex;
-  width: 100%;
-  min-height: 44px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 40px;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -1422,26 +1703,11 @@ summary::-webkit-details-marker {
 .generate-button:hover:enabled {
   background: var(--vs-accent-hover);
 }
-.shortcut-hint {
-  text-align: center;
-  font-size: 10px;
-  color: var(--vs-muted);
-  margin-top: 8px;
-}
-.results-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
 .results-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 16px 26px;
-  border-bottom: 1px solid var(--vs-border);
-  flex-shrink: 0;
+  padding: 12px 20px;
 }
 .results-title {
   display: flex;
@@ -1466,31 +1732,6 @@ summary::-webkit-details-marker {
   color: var(--vs-muted);
   font-size: 11.5px;
   margin-top: 3px;
-}
-.reset-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 12.5px;
-  font-weight: 550;
-  color: var(--vs-secondary);
-  background: var(--vs-panel);
-  border: 1px solid var(--vs-border);
-  border-radius: 10px;
-  white-space: nowrap;
-}
-.reset-button:hover:enabled {
-  border-color: var(--vs-border-strong);
-  color: var(--vs-text);
-}
-.results-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 26px;
 }
 .result-filters {
   display: flex;
@@ -1551,7 +1792,8 @@ summary::-webkit-details-marker {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px 26px 24px;
+  overscroll-behavior: contain;
+  padding: 16px 20px 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--vs-border-strong) transparent;
 }
@@ -1702,10 +1944,19 @@ summary::-webkit-details-marker {
   margin-left: 8px;
 }
 .legacy-notice {
-  margin: 0 26px;
+  margin: 0 14px 8px;
 }
 .legacy-notice:empty {
   display: none;
+}
+.studio-notice {
+  margin: 12px 20px 0;
+}
+.results-footnote {
+  flex-shrink: 0;
+  padding: 9px 12px;
+  line-height: 1.6;
+  text-align: center;
 }
 .button-spinner {
   width: 14px;
@@ -1722,106 +1973,71 @@ summary::-webkit-details-marker {
     transform: rotate(360deg);
   }
 }
-@media (min-width: 1600px) {
-  .video-studio {
-    grid-template-columns: 420px minmax(0, 1fr);
+@media (max-width: 860px) {
+  /* Compact screens keep the canvas and composer visible; history opens as a drawer. */
+  .rail-close { display: grid; }
+  .rail-head,
+  .rail-tools {
+    padding: 8px 10px 6px;
   }
-  .creation-scroll {
-    padding-left: 28px;
-    padding-right: 28px;
+  .rail-tools {
+    flex-direction: row;
+    flex-wrap: wrap;
   }
-}
-@media (max-width: 1050px) and (min-width: 761px) {
-  .video-studio {
-    grid-template-columns: 348px minmax(0, 1fr);
+  .rail-tools .result-search {
+    flex: 1 1 140px;
+    width: auto;
+  }
+  .rail-list { overflow-y: auto; padding: 0 10px 8px; }
+  .results-footnote {
+    display: none;
   }
   .results-header,
-  .results-scroll,
-  .results-toolbar {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-  .results-toolbar {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .result-search {
-    width: 100%;
-  }
-  .legacy-notice {
-    margin: 0 20px;
-  }
-}
-@media (max-width: 760px) {
-  .video-studio {
-    display: flex;
-    flex-direction: column;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-  .creation-panel {
-    flex: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--vs-border);
-  }
-  .panel-heading {
-    padding: 14px 16px;
-  }
-  .creation-scroll {
-    overflow: visible;
-    padding: 16px 16px 20px;
-    flex: none;
-  }
-  .creation-footer {
-    padding: 13px 16px;
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    box-shadow: 0 -5px 20px rgba(16, 24, 40, 0.05);
-  }
-  .results-panel {
-    flex: none;
-    min-height: 480px;
-  }
   .results-scroll {
-    overflow: visible;
-    flex: 1;
-    padding: 12px 16px 20px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
-  .results-header {
-    padding: 14px 16px;
-  }
-  .results-toolbar {
-    padding: 12px 16px;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .legacy-notice {
-    margin: 0 16px;
-  }
-  .result-search {
-    width: 100%;
-  }
-  .result-filters {
-    width: 100%;
-  }
-  .result-filters button {
-    flex: 1;
-    justify-content: center;
+  .header-text p {
+    display: none;
   }
   .results-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .empty-results {
-    min-height: 320px;
-    padding: 25px 6px;
+    min-height: 240px;
+    padding: 20px 6px;
   }
-  .empty-results h3 {
-    font-size: 16px;
+  .empty-visual {
+    display: none;
   }
-  .results-footnote {
-    line-height: 1.8;
-    text-align: center;
+}
+@media (max-width: 520px) {
+  .composer {
+    padding: 8px;
+  }
+  .composer-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .creation-modes, .send-group { grid-column: 1 / -1; }
+  .composer-toolbar :deep(.wb-popover), .composer-toolbar :deep(.wb-chip) { width: 100%; }
+  .send-group {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .cost-estimate {
+    text-align: left;
+  }
+  .creation-modes button {
+    padding: 0 6px;
+  }
+  .plus-button {
+    width: 34px;
+    height: 34px;
+  }
+  .prompt-bottom span:first-child {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
