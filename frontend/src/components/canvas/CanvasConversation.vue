@@ -1,33 +1,38 @@
 <template>
-  <section class="studio-panel text-chat" :aria-label="t('canvas.tabConversation')">
-    <aside v-if="!sidebarCollapsed" class="text-chat-sidebar">
+  <section class="text-chat" :aria-label="t('canvas.tabConversation')">
+    <aside v-if="!sidebarCollapsed" class="studio-panel text-chat-sidebar" :aria-label="t('studioChat.history')">
       <StudioChatHistory closable close-icon="chevronLeft" :close-label="t('studioChat.collapseHistory')" @close="sidebarCollapsed = true" />
     </aside>
-    <div v-if="historyOpen" class="studio-shell chat-history-overlay" @click.self="historyOpen = false">
-      <aside ref="historyDialog" class="chat-history-drawer" role="dialog" aria-modal="true" :aria-label="t('studioChat.history')" tabindex="-1"><StudioChatHistory closable @close="historyOpen = false" @navigate="historyOpen = false" /></aside>
-    </div>
-    <main class="text-chat-main">
-      <header class="studio-panel-head text-chat-head">
-        <div class="studio-panel-title">
+    <Teleport to="body">
+      <div v-if="historyOpen" class="studio-shell chat-history-overlay" @click.self="historyOpen = false">
+        <aside ref="historyDialog" class="studio-panel chat-history-drawer" role="dialog" aria-modal="true" :aria-label="t('studioChat.history')" tabindex="-1"><StudioChatHistory closable @close="historyOpen = false" @navigate="historyOpen = false" /></aside>
+      </div>
+    </Teleport>
+    <main class="studio-panel text-chat-main">
+      <header class="text-chat-head">
+        <div class="chat-head-identity">
           <button type="button" class="studio-icon-btn text-chat-history-toggle" :aria-label="t('studioChat.history')" :title="t('studioChat.history')" @click="historyOpen = true"><Icon name="menu" size="sm" /></button>
           <button v-if="sidebarCollapsed" type="button" class="studio-icon-btn text-chat-sidebar-toggle" :aria-label="t('studioChat.expandHistory')" :title="t('studioChat.expandHistory')" @click="sidebarCollapsed = false"><Icon name="chevronRight" size="sm" /></button>
-          <span class="studio-title-mark text-chat-desktop-mark" aria-hidden="true"><Icon name="chat" size="sm" /></span>
-          <div class="min-w-0"><h1 class="studio-heading">{{ t('canvas.tabConversation') }}</h1><p class="studio-subheading">{{ t('studioChat.subtitle') }}</p></div>
+          <div class="chat-head-text"><h1 :title="activeChat?.title || t('studioChat.untitled')">{{ activeChat?.title || t('studioChat.untitled') }}</h1><p role="status"><span class="studio-dot" :class="{ 'studio-dot--ok': chatReady && !chatActiveBusy && !chatOptionsError && !chatStorageError }" aria-hidden="true"></span>{{ t(chatActiveBusy ? 'studioChat.replying' : chatOptionsLoading ? 'studioChat.loadingModels' : chatReady ? 'studioChat.ready' : 'studioChat.loading') }}</p></div>
         </div>
-        <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm ml-auto" :disabled="!chatReady" @click="newChat"><Icon name="plus" size="xs" />{{ t('studioChat.newChat') }}</button>
+        <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm chat-new-button" :disabled="!chatReady" :aria-label="t('studioChat.newChat')" @click="newChat"><Icon name="plus" size="xs" /><span>{{ t('studioChat.newChat') }}</span></button>
       </header>
       <div v-if="chatOptionsError" role="alert" class="studio-alert text-chat-alert">{{ chatOptionsError }}<button type="button" class="underline" @click="refreshChatOptions">{{ t('common.retry') }}</button></div>
       <div v-if="chatStorageError" role="alert" class="studio-alert text-chat-alert"><span>{{ chatStorageError }}</span><button type="button" class="underline" :disabled="chatBusy" @click="retryChatSave">{{ t('studioChat.retrySave') }}</button><button type="button" class="underline" :disabled="chatBusy" @click="reloadHistory">{{ t('studioChat.reloadHistory') }}</button></div>
       <div v-if="backgroundChatId" class="text-chat-background" role="status"><span>{{ t('studioChat.backgroundReply') }}</span><button type="button" class="underline" @click="selectChat(backgroundChatId)">{{ t('studioChat.viewReply') }}</button></div>
-      <div ref="scroller" class="studio-scroll text-chat-messages" role="log" :aria-label="t('studioChat.messages')" aria-live="polite" @scroll="trackScroll">
-        <div v-if="!chatReady && !chatStorageError" class="studio-empty" role="status"><p class="studio-note">{{ t('studioChat.loading') }}</p></div>
-        <div v-else-if="!activeChat?.messages.length" class="studio-empty chat-welcome">
-          <span class="studio-empty-mark" aria-hidden="true"><Icon name="chat" size="lg" /></span>
-          <h2 class="studio-empty-title">{{ t('studioChat.welcome') }}</h2><p class="studio-empty-text">{{ t('studioChat.description') }}</p>
-          <div v-if="!chatOptionsLoading && !chatKeys.length" class="chat-no-key"><p>{{ t('studioChat.noKeys') }}</p><RouterLink class="studio-btn studio-btn--primary" to="/keys">{{ t('studioChat.manageKeys') }}</RouterLink></div>
-          <div v-else class="chat-examples"><button v-for="key in ['brainstorm', 'write', 'explain'] as const" :key="key" type="button" class="studio-btn studio-btn--ghost" @click="applyExample(key)"><Icon name="sparkles" size="xs" />{{ t(`studioChat.examples.${key}.title`) }}<Icon name="arrowRight" size="xs" /></button></div>
-        </div>
-        <div v-else class="chat-message-list">
+      <div class="text-chat-thread">
+        <div ref="scroller" class="studio-scroll text-chat-messages" role="log" :aria-label="t('studioChat.messages')" aria-live="polite" @scroll="trackScroll">
+          <div v-if="!chatReady && !chatStorageError" class="studio-empty" role="status"><p class="studio-note">{{ t('studioChat.loading') }}</p></div>
+          <div v-else-if="!activeChat?.messages.length" class="chat-welcome">
+            <span class="studio-empty-mark" aria-hidden="true"><Icon name="chat" size="lg" /></span>
+            <h2 class="studio-empty-title">{{ t('studioChat.welcome') }}</h2><p class="studio-empty-text">{{ t('studioChat.description') }}</p>
+            <div v-if="!chatOptionsLoading && !chatKeys.length" class="chat-no-key"><p>{{ t('studioChat.noKeys') }}</p><RouterLink class="studio-btn studio-btn--primary" to="/keys">{{ t('studioChat.manageKeys') }}</RouterLink></div>
+            <div v-else class="chat-examples">
+              <div class="chat-example-heading"><span></span>{{ t('studioChat.tryExamples') }}<span></span></div>
+              <ul><li v-for="key in ['brainstorm', 'write', 'explain'] as const" :key="key"><button type="button" @click="applyExample(key)"><Icon name="sparkles" size="xs" /><span>{{ t(`studioChat.examples.${key}.prompt`) }}</span><Icon name="arrowRight" size="xs" /></button></li></ul>
+            </div>
+          </div>
+          <div v-else class="chat-message-list">
           <article v-for="(message, index) in activeChat.messages" :key="message.id" class="chat-message" :class="`is-${message.role}`" :data-testid="`chat-${message.role}-message`">
             <div class="chat-message-heading"><span class="chat-avatar" aria-hidden="true"><Icon :name="message.role === 'user' ? 'user' : 'sparkles'" size="xs" /></span><strong>{{ message.role === 'user' ? t('studioChat.you') : message.model || t('studioChat.assistant') }}</strong><span v-if="message.status === 'streaming'" class="chat-stream-dot" :aria-label="t('studioChat.replying')"></span></div>
             <div v-if="message.role === 'assistant' && message.content" v-show="!htmlPreview[message.id]" class="chat-markdown" v-html="renderMarkdown(message.content)"></div>
@@ -46,25 +51,29 @@
               <iframe class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer" tabindex="0"></iframe>
             </div>
           </article>
+          </div>
+        </div>
+        <button v-if="!atBottom && activeChat?.messages.length" type="button" class="studio-icon-btn chat-latest" :aria-label="t('studioChat.latest')" :title="t('studioChat.latest')" @click="scrollToBottom"><Icon name="arrowDown" size="sm" /></button>
+      </div>
+      <div class="text-chat-composer">
+        <div class="chat-composer-content">
+          <div class="text-chat-options">
+            <label class="chat-option"><span>{{ t('studioChat.apiKey') }}</span><select data-testid="chat-key" :aria-label="t('studioChat.apiKey')" :value="chatKeyId ?? ''" :disabled="chatOptionsLoading" @change="selectChatKey(Number(($event.target as HTMLSelectElement).value) || null)"><option v-if="!chatKeys.length" value="">{{ t('studioChat.chooseKey') }}</option><option v-for="key in chatKeys" :key="key.id" :value="key.id">{{ key.name }}</option></select></label>
+            <label class="chat-option chat-model-option"><span>{{ t('studioChat.model') }}</span><select data-testid="chat-model" :aria-label="t('studioChat.model')" :value="chatModel" :disabled="chatOptionsLoading || !chatModels.length" @change="selectChatModel(($event.target as HTMLSelectElement).value)"><option v-if="!chatModels.length" value="">{{ t(chatOptionsLoading ? 'studioChat.loadingModels' : 'studioChat.noModels') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select></label>
+            <button type="button" class="studio-icon-btn chat-refresh" :disabled="chatOptionsLoading" :aria-label="t('studioChat.refresh')" :title="t('studioChat.refresh')" @click="refreshChatOptions"><Icon name="refresh" size="xs" /></button>
+          </div>
+          <form class="chat-input-box" @submit.prevent="sendChat()">
+            <textarea ref="input" v-model="draft" rows="1" maxlength="32000" data-testid="chat-input" :aria-label="t('studioChat.input')" :placeholder="t('studioChat.placeholder')" :disabled="!chatReady" @blur="saveChatDraft" @keydown="onKeydown"></textarea>
+            <div class="chat-composer-bottom"><span>{{ t('studioChat.shortcut') }}</span><button v-if="chatActiveBusy" type="button" class="chat-submit is-stop" data-testid="chat-stop" :aria-label="t('studioChat.stop')" :title="t('studioChat.stop')" @click="stopChat()"><span class="chat-stop-icon" aria-hidden="true"></span></button><button v-else type="submit" class="chat-submit" data-testid="chat-send" :aria-label="t('studioChat.send')" :title="t('studioChat.send')" :disabled="!canSend"><Icon name="arrowUp" size="md" /></button></div>
+          </form>
+          <p class="chat-composer-note">{{ t('studioChat.billingNote') }}</p>
         </div>
       </div>
-      <button v-if="!atBottom && activeChat?.messages.length" type="button" class="studio-btn studio-btn--ghost chat-latest" @click="scrollToBottom">{{ t('studioChat.latest') }}<Icon name="arrowDown" size="xs" /></button>
-      <div class="text-chat-options">
-        <label class="studio-label"><span>{{ t('studioChat.apiKey') }}</span><select class="studio-input--boxed" data-testid="chat-key" :value="chatKeyId ?? ''" :disabled="chatOptionsLoading" @change="selectChatKey(Number(($event.target as HTMLSelectElement).value) || null)"><option v-if="!chatKeys.length" value="">{{ t('studioChat.chooseKey') }}</option><option v-for="key in chatKeys" :key="key.id" :value="key.id">{{ key.name }}</option></select></label>
-        <label class="studio-label"><span>{{ t('studioChat.model') }}</span><select class="studio-input--boxed" data-testid="chat-model" :value="chatModel" :disabled="chatOptionsLoading || !chatModels.length" @change="selectChatModel(($event.target as HTMLSelectElement).value)"><option v-if="!chatModels.length" value="">{{ t(chatOptionsLoading ? 'studioChat.loadingModels' : 'studioChat.noModels') }}</option><option v-for="model in chatModels" :key="model" :value="model">{{ model }}</option></select></label>
-        <button type="button" class="studio-icon-btn" :disabled="chatOptionsLoading" :aria-label="t('studioChat.refresh')" @click="refreshChatOptions"><Icon name="refresh" size="sm" /></button>
-      </div>
-      <form class="text-chat-composer" @submit.prevent="sendChat()">
-        <div class="chat-input-box"><textarea ref="input" v-model="draft" rows="3" maxlength="32000" data-testid="chat-input" :aria-label="t('studioChat.input')" :placeholder="t('studioChat.placeholder')" :disabled="!chatReady" @blur="saveChatDraft" @keydown="onKeydown"></textarea>
-          <div class="chat-composer-bottom"><span>{{ t('studioChat.shortcut') }}</span><button v-if="chatActiveBusy" type="button" class="studio-btn studio-btn--ghost" data-testid="chat-stop" @click="stopChat()"><span class="chat-stop-icon" aria-hidden="true"></span>{{ t('studioChat.stop') }}</button><button v-else type="submit" class="studio-btn studio-btn--primary" data-testid="chat-send" :disabled="!canSend"><Icon name="arrowUp" size="sm" />{{ t('studioChat.send') }}</button></div>
-        </div>
-        <p class="chat-composer-note">{{ t('studioChat.billingNote') }}</p>
-      </form>
     </main>
   </section>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import { marked } from 'marked'
@@ -139,48 +148,92 @@ async function copy(text: string) {
 }
 // 切换对话时退出放大,避免覆盖层停留在另一段对话上
 watch(chatActiveId, () => { if (htmlZoomId.value) { htmlZoomId.value = ''; zoomOrigin = null } })
-onMounted(() => { void initStudioChat() })
+function autoGrow() {
+  const element = input.value
+  if (!element) return
+  element.style.height = 'auto'
+  const maxHeight = parseFloat(getComputedStyle(element).maxHeight) || 136
+  element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`
+  element.style.overflowY = element.scrollHeight > maxHeight ? 'auto' : 'hidden'
+}
+watch([draft, chatActiveId], () => { void nextTick(autoGrow) }, { flush: 'post' })
+let messageResize: ResizeObserver | undefined
+onMounted(() => {
+  void initStudioChat()
+  void nextTick(autoGrow)
+  messageResize = new ResizeObserver(() => { if (atBottom.value) scrollToBottom() })
+  if (scroller.value) messageResize.observe(scroller.value)
+})
+onUnmounted(() => messageResize?.disconnect())
 </script>
 <style scoped>
-.text-chat { display: flex; position: relative; height: 100%; min-height: 0; overflow: hidden; }
-.text-chat-sidebar { width: 250px; flex-shrink: 0; padding: 16px 12px; border-right: 1px solid var(--st-border); background: var(--st-panel-soft); }
-.text-chat-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
-.text-chat-head { flex-shrink: 0; }
+.text-chat { display: flex; gap: 12px; height: 100%; min-height: 0; min-width: 0; }
+.text-chat-sidebar { display: flex; width: 248px; flex-shrink: 0; min-height: 0; overflow: hidden; padding: 12px; }
+.text-chat-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.text-chat-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 10px 14px; border-bottom: 1px solid var(--st-border); }
+.chat-head-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-head-text { min-width: 0; }
+.chat-head-text h1 { margin: 0; max-width: min(32rem, 48vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; color: var(--st-text); }
+.chat-head-text p { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--st-muted); }
+.chat-new-button { flex-shrink: 0; }
 .text-chat-history-toggle { display: none; }
 .text-chat-sidebar-toggle { display: inline-grid; }
-.text-chat-options { display: flex; align-items: flex-end; justify-content: center; gap: 10px; padding: 12px 24px 0; flex-shrink: 0; border-top: 1px solid var(--st-border); background: var(--st-panel); }
-.text-chat-options label { flex: 1; min-width: 0; max-width: 320px; }
-.text-chat-options select { width: 100%; font-size: 12px; min-width: 0; text-overflow: ellipsis; }
-.text-chat-alert { margin: 8px 16px 0; flex-shrink: 0; }
+.text-chat-alert { margin: 8px 14px 0; flex-shrink: 0; }
 .text-chat-background { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px; font-size: 12px; background: var(--st-accent-soft); color: var(--st-accent-text); }
-.text-chat-messages { flex: 1; min-height: 0; padding: 24px; scroll-behavior: auto; }
-.chat-welcome { min-height: 100%; padding-block: 24px; }
-.chat-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 24px; }
+.text-chat-thread { display: flex; position: relative; flex: 1; min-height: 0; }
+.text-chat-messages { width: 100%; min-height: 0; padding: 16px 24px 24px; scroll-behavior: auto; }
+.chat-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 46vh; padding: 32px 8px; text-align: center; }
+.chat-welcome h2 { font-size: clamp(1.25rem, 3.2vw, 1.65rem); }
+.chat-examples { width: 100%; max-width: 576px; margin-top: 28px; }
+.chat-example-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 11px; font-weight: 600; color: var(--st-muted); }
+.chat-example-heading > span { height: 1px; flex: 1; background: var(--st-border); }
+.chat-examples ul { display: grid; list-style: none; gap: 8px; margin: 0; padding: 0; }
+.chat-examples button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--st-border); border-radius: 12px; background: var(--st-panel); color: var(--st-text-soft); font-size: 12.5px; line-height: 1.6; text-align: left; }
+.chat-examples button:hover { border-color: var(--st-accent-border); color: var(--st-text); }
+.chat-examples button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chat-examples button > svg { flex-shrink: 0; color: var(--st-accent); }
 .chat-no-key { margin-top: 20px; display: grid; gap: 12px; justify-items: center; color: var(--st-text-soft); font-size: 13px; }
-.chat-message-list { display: flex; flex-direction: column; gap: 24px; max-width: 780px; margin: 0 auto; }
+.chat-message-list { display: flex; flex-direction: column; gap: 20px; max-width: 832px; margin: 0 auto; }
 .chat-message { min-width: 0; }
-.chat-message-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--st-text-soft); font-size: 12px; }
-.chat-avatar { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 9px; background: var(--st-accent-soft); color: var(--st-accent-text); }
-.chat-message.is-user { margin-left: auto; max-width: 88%; }
-.chat-message.is-user .chat-message-heading { justify-content: flex-end; }
-.chat-user-text { padding: 12px 16px; border-radius: 16px 4px 16px 16px; background: var(--st-accent-soft); color: var(--st-text); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.8; }
-.chat-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chat-message-heading { display: flex; align-items: center; gap: 6px; min-height: 28px; margin-bottom: 6px; color: var(--st-muted); font-size: 11px; }
+.chat-message-heading strong { font-weight: 500; }
+.chat-avatar { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--st-border); border-radius: 50%; background: var(--st-panel); color: var(--st-text-soft); }
+.chat-message.is-user { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; max-width: min(100%, 38rem); }
+.chat-message.is-user .chat-message-heading { flex-direction: row-reverse; }
+.chat-message.is-user .chat-avatar { border-color: transparent; background: #10b981; color: #fff; }
+.chat-user-text { padding: 10px 14px; border-radius: 18px 4px 18px 18px; background: #10b981; color: #fff; box-shadow: 0 8px 24px -12px #10b9818c; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.75; }
+:global(.dark) .chat-user-text, :global(.dark) .chat-message.is-user .chat-avatar { background: #059669; }
+.chat-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chat-message.is-user .chat-message-actions { justify-content: flex-end; }
 .chat-message-note, .chat-message-error { margin-top: 10px; font-size: 12px; overflow-wrap: anywhere; }
 .chat-message-note { color: var(--st-muted); }
 .chat-message-error { color: var(--st-danger); }
 .chat-stream-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--st-accent); animation: pulse 1s infinite; }
-.chat-stop-icon { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-.text-chat-composer { flex-shrink: 0; padding: 10px 24px 14px; background: var(--st-panel); }
-.chat-input-box { max-width: 800px; margin-inline: auto; padding: 12px; border: 1px solid var(--st-border-strong); border-radius: 16px; background: var(--st-panel-soft); box-shadow: var(--st-shadow-sm); }
+.text-chat-composer { position: relative; flex-shrink: 0; padding: 4px 16px 12px; }
+.text-chat-composer::before { content: ''; pointer-events: none; position: absolute; inset: -24px 0 auto; height: 24px; background: linear-gradient(to top, var(--st-panel), transparent); }
+.chat-composer-content { max-width: 768px; margin-inline: auto; }
+.text-chat-options { display: flex; align-items: center; gap: 8px; margin: 0 4px 8px; }
+.chat-option { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 44%; height: 32px; padding: 0 10px; border: 1px solid var(--st-border); border-radius: 999px; background: var(--st-panel); box-shadow: var(--st-shadow-sm); }
+.chat-option > span { flex-shrink: 0; color: var(--st-muted); font-size: 10px; }
+.chat-option select { min-width: 0; max-width: 100%; border: 0; outline: 0; background: transparent; color: var(--st-text-soft); text-overflow: ellipsis; font-size: 12px; }
+.chat-option:focus-within { outline: 2px solid var(--st-focus); outline-offset: 2px; }
+.chat-model-option { flex: 1; }
+.chat-refresh { width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--st-border); border-radius: 50%; background: var(--st-panel); }
+.chat-input-box { padding: 12px; border: 1px solid var(--st-border); border-radius: 24px; background: var(--st-panel); box-shadow: 0 10px 28px -16px #10182840; }
 .chat-input-box:focus-within { border-color: var(--st-accent); }
-.chat-input-box textarea { display: block; resize: none; width: 100%; min-height: 60px; max-height: 150px; border: 0; outline: 0; background: transparent; color: var(--st-text); font-size: 14px; line-height: 1.7; }
-.chat-composer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-.chat-composer-bottom > span { color: var(--st-muted); font-size: 11px; }
+.chat-input-box textarea { display: block; resize: none; width: 100%; min-height: 44px; max-height: 136px; padding: 4px 6px; border: 0; outline: 0; background: transparent; color: var(--st-text); font-size: 15px; line-height: 1.5; }
+.chat-composer-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.chat-composer-bottom > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-muted); font-size: 11px; padding: 0 6px 10px; }
+.chat-submit { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--st-accent); color: #fff; transition: background-color .15s ease; }
+.chat-submit:hover:enabled { background: var(--st-accent-hover); }
+.chat-submit:disabled { cursor: not-allowed; border: 1px solid var(--st-border); background: var(--st-surface); color: var(--st-muted); }
+.chat-submit.is-stop { border: 1px solid var(--st-danger-border); background: var(--st-danger-soft); color: var(--st-danger); }
+.chat-stop-icon { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
 .chat-composer-note { margin: 8px 0 0; text-align: center; color: var(--st-muted); font-size: 10px; line-height: 1.5; }
-.chat-latest { position: absolute; bottom: 210px; left: 50%; transform: translateX(-50%); z-index: 5; background: var(--st-panel); box-shadow: var(--st-shadow); }
-.chat-history-overlay { position: absolute; inset: 0; z-index: 80; background: #02061780; }
-.chat-history-drawer { height: 100%; width: min(310px, 88%); padding: 16px; background: var(--st-panel); box-shadow: var(--st-shadow-lg); }
+.chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5; width: 40px; height: 40px; border: 1px solid var(--st-border); border-radius: 50%; background: var(--st-panel); box-shadow: var(--st-shadow); }
+.chat-history-overlay { position: fixed; inset: 0; z-index: 260; padding: 12px; background: #0f172a80; }
+.chat-history-drawer { height: 100%; max-height: calc(100dvh - 24px); width: min(352px, 88vw); display: flex; flex-direction: column; padding: 12px; box-shadow: var(--st-shadow-lg); }
+.chat-examples button:focus-visible, .chat-submit:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 2px; }
 .chat-markdown { font-size: 14px; line-height: 1.85; color: var(--st-text); overflow-wrap: anywhere; }
 .chat-markdown :deep(p), .chat-markdown :deep(ul), .chat-markdown :deep(ol), .chat-markdown :deep(blockquote) { margin: 0 0 12px; }
 .chat-markdown :deep(ul), .chat-markdown :deep(ol) { padding-left: 22px; list-style: revert; }
@@ -198,16 +251,23 @@ onMounted(() => { void initStudioChat() })
 .chat-html-frame.is-zoomed { position: fixed; inset: 0; z-index: 120; margin: 0; padding: 48px 12px 12px; background: #020617e6; }
 .chat-html-frame.is-zoomed .chat-html-preview { height: 100%; min-height: 0; border-radius: 12px; }
 .chat-html-exit { position: absolute; top: 10px; right: 12px; z-index: 1; }
+
 @keyframes pulse { 50% { opacity: .25; } }
 @media (max-width: 1023px) {
-  .text-chat-sidebar, .text-chat-desktop-mark, .text-chat-sidebar-toggle { display: none; }
+  .text-chat-sidebar, .text-chat-sidebar-toggle { display: none; }
   .text-chat-history-toggle { display: inline-grid; }
-  .text-chat-options { padding: 10px 12px; gap: 8px; }
-  .text-chat-messages { padding: 16px 12px; }
-  .text-chat-composer { padding: 8px 10px; }
-  .chat-composer-bottom > span { max-width: 130px; }
-  .chat-input-box textarea { font-size: 16px; min-height: 50px; }
+  .text-chat-messages { padding: 16px 12px 24px; }
 }
-@media (max-height: 700px) { .chat-composer-note { display: none; } .chat-input-box textarea { min-height: 40px; height: 48px; } }
-@media (prefers-reduced-motion: reduce) { .chat-stream-dot { animation: none; } .text-chat-messages { scroll-behavior: auto; } }
+@media (max-width: 639px) {
+  .text-chat-head { padding: 10px 12px; }
+  .chat-new-button > span { display: none; }
+  .text-chat-composer { padding: 4px 12px 12px; }
+  .chat-option { max-width: 42%; padding-inline: 8px; }
+  .chat-option > span { display: none; }
+  .chat-model-option { max-width: none; }
+  .chat-input-box textarea { font-size: 16px; }
+  .chat-composer-bottom > span { font-size: 10px; }
+}
+@media (max-height: 700px) { .chat-composer-note { display: none; } }
+@media (prefers-reduced-motion: reduce) { .chat-stream-dot { animation: none; } }
 </style>

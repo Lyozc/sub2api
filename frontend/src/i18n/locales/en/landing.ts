@@ -1,5 +1,9 @@
 export default {
   studioChat: {
+    "ready": "Ready",
+    "tryExamples": "Try a question",
+    "messageCount": "{n} messages",
+    "totalMessages": "Total messages",
     "subtitle": "Choose a model and start a conversation",
     "history": "Chat history",
     "newChat": "New chat",

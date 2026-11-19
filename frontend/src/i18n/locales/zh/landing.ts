@@ -1,5 +1,9 @@
 export default {
   studioChat: {
+    "ready": "准备就绪",
+    "tryExamples": "试试这些提问",
+    "messageCount": "{n} 条消息",
+    "totalMessages": "累计消息",
     "subtitle": "选择模型，开始一段完整的对话",
     "history": "对话历史",
     "newChat": "新建对话",
