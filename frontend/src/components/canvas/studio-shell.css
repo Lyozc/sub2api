@@ -4,74 +4,43 @@
  * Only the canvas studio components (chat draw, video studio, prompt library,
  * assets, config) use these classes. Every rule is namespaced under
  * `.studio-shell` or a `studio-` class prefix so admin and other screens keep
- * their own styling. Dark mode follows the app-wide `html.dark` class.
+ * their own styling. The workspace keeps its cinema palette independently of the app theme.
  */
 
-.studio-shell {
-  /* Surfaces */
-  --st-bg: #f4f6f8;
-  --st-panel: #ffffff;
-  --st-panel-soft: #f8fafc;
-  --st-surface: #eef1f5;
-  --st-border: #e3e7ec;
-  --st-border-strong: #cfd6de;
-  /* Text */
-  --st-text: #101828;
-  --st-text-soft: #4a5565;
-  --st-muted: #8d97a5;
-  /* Accent (emerald, matching the chat palette) */
-  --st-accent: #059669;
-  --st-accent-hover: #047857;
-  --st-accent-on: #ffffff;
-  --st-accent-soft: #ecfdf5;
-  --st-accent-border: #a7f3d0;
-  --st-accent-text: #047857;
-  --st-focus: #0d9488;
-  /* Feedback */
-  --st-danger: #d4493f;
-  --st-danger-soft: #fef2f2;
-  --st-danger-border: #fecaca;
-  --st-warn: #b45309;
-  --st-warn-soft: #fffbeb;
-  --st-warn-border: #fde68a;
-  /* Depth */
-  --st-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --st-shadow: 0 10px 30px -22px rgba(16, 24, 40, 0.35);
-  --st-shadow-lg: 0 18px 44px -30px rgba(16, 24, 40, 0.45);
-  --st-radius: 14px;
-  --st-radius-lg: 18px;
-
+.studio-shell,
+.dark .studio-shell {
+  /* Night screening room: an independent workspace palette in either app mode. */
+  color-scheme: dark;
+  --st-bg: #0e1012;
+  --st-panel: #121518;
+  --st-panel-soft: #171b1f;
+  --st-surface: #20262c;
+  --st-border: #2a3038;
+  --st-border-strong: #414a55;
+  --st-text: #eef1f4;
+  --st-text-soft: #bec5cd;
+  --st-muted: #929ba6;
+  --st-accent: #e08a2e;
+  --st-accent-hover: #f0a64d;
+  --st-accent-on: #1b1208;
+  --st-accent-soft: rgba(224, 138, 46, 0.12);
+  --st-accent-border: rgba(224, 138, 46, 0.36);
+  --st-accent-text: #f1ad59;
+  --st-focus: #f1ad59;
+  --st-danger: #f59c98;
+  --st-danger-soft: rgba(205, 65, 57, 0.12);
+  --st-danger-border: rgba(240, 104, 96, 0.35);
+  --st-warn: #efbd6e;
+  --st-warn-soft: rgba(224, 138, 46, 0.1);
+  --st-warn-border: rgba(224, 138, 46, 0.32);
+  --st-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --st-shadow: 0 12px 36px -24px rgba(0, 0, 0, 0.65);
+  --st-shadow-lg: 0 24px 60px -32px rgba(0, 0, 0, 0.8);
+  --st-radius: 10px;
+  --st-radius-lg: 12px;
   min-width: 0;
   color: var(--st-text);
   background: var(--st-bg);
-}
-
-.dark .studio-shell {
-  --st-bg: #0e1626;
-  --st-panel: #151e2f;
-  --st-panel-soft: #182234;
-  --st-surface: #1e293b;
-  --st-border: #2a3650;
-  --st-border-strong: #3d4b66;
-  --st-text: #f1f5f9;
-  --st-text-soft: #c3cedd;
-  --st-muted: #8b97a9;
-  --st-accent: #10b981;
-  --st-accent-hover: #34d399;
-  --st-accent-on: #04231a;
-  --st-accent-soft: rgba(16, 185, 129, 0.14);
-  --st-accent-border: rgba(16, 185, 129, 0.38);
-  --st-accent-text: #6ee7b7;
-  --st-focus: #2dd4bf;
-  --st-danger: #fca5a5;
-  --st-danger-soft: rgba(185, 28, 28, 0.18);
-  --st-danger-border: rgba(248, 113, 113, 0.35);
-  --st-warn: #fcd34d;
-  --st-warn-soft: rgba(180, 83, 9, 0.18);
-  --st-warn-border: rgba(252, 211, 77, 0.3);
-  --st-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --st-shadow: 0 12px 30px -20px rgba(0, 0, 0, 0.8);
-  --st-shadow-lg: 0 20px 48px -28px rgba(0, 0, 0, 0.85);
 }
 
 /* ---------------------------------------------------------------- shell ---- */

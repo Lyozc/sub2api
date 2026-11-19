@@ -1,0 +1,126 @@
+/* The night screening room belongs to the studio, never to the app layout. */
+.studio-page { min-height: 100dvh; padding: 12px; background: #090b0d; }
+.studio-shell.studio-night.studio-frame { border-radius: 14px; }
+.studio-night--standalone { height: calc(100dvh - 24px); }
+.studio-night--embedded { height: calc(100dvh - 9rem); min-height: 400px; }
+.studio-shell.studio-night .studio-topbar {
+  min-height: 66px; gap: 12px 24px; padding: 12px 18px;
+  background: linear-gradient(180deg, #191d21, #14171a);
+}
+.studio-shell.studio-night .studio-brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--st-accent); box-shadow: none; }
+.studio-shell.studio-night .studio-brand-title { font-size: 14px; letter-spacing: .04em; }
+.studio-shell.studio-night .studio-brand-sub { display: block; max-width: 220px; font-size: 10px; }
+.studio-shell.studio-night .studio-nav { padding: 4px; border-radius: 999px; background: #0e1114; }
+.studio-shell.studio-night .studio-nav-item { position: relative; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; color: #aab2bc; }
+.studio-shell.studio-night .studio-nav-item:hover { background: #1c2228; color: var(--st-text); }
+.studio-shell.studio-night .studio-nav-item.is-active { border-color: var(--st-accent-border); background: var(--st-accent-soft); color: var(--st-accent-text); box-shadow: none; }
+.studio-shell.studio-night .studio-nav-item.is-active::after { content: ''; width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: var(--st-accent); }
+.studio-shell.studio-night .studio-topbar-actions .studio-btn { font-size: 11px; min-height: 32px; padding-inline: 10px; color: var(--st-text-soft); }
+.studio-shell.studio-night .studio-body { padding: 0; overflow: hidden; }
+.studio-shell.studio-night .studio-body > .studio-panel { height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.studio-shell.studio-night .studio-btn--primary { color: var(--st-accent-on); box-shadow: none; }
+.studio-shell.studio-night .studio-title-mark { border-radius: 8px; }
+.studio-shell.studio-night .studio-heading { letter-spacing: -.02em; }
+.studio-shell.studio-night .studio-empty-title { font-weight: 650; letter-spacing: -.03em; }
+.studio-shell.studio-night .studio-empty-mark { width: 56px; height: 56px; border-radius: 16px; border-color: var(--st-accent-border); background: var(--st-accent-soft); box-shadow: none; }
+.studio-shell.studio-night .studio-dialog, .studio-shell.studio-night .studio-card { box-shadow: none; }
+.studio-shell input::placeholder, .studio-shell textarea::placeholder { color: var(--st-muted); opacity: .8; }
+.studio-shell select option { color: var(--st-text); background: var(--st-panel); }
+.studio-shell { scrollbar-color: var(--st-border-strong) transparent; }
+
+/* Connected history and canvas panels, matching the B prototype's editing frame. */
+.studio-shell.studio-night .text-chat { gap: 0; }
+.studio-shell.studio-night .text-chat-sidebar, .studio-shell.studio-night .night-image-history {
+  width: 236px; padding: 14px 12px; border: 0; border-right: 1px solid var(--st-border);
+  border-radius: 0; background: var(--st-panel); box-shadow: none;
+}
+.studio-shell.studio-night .text-chat-main, .studio-shell.studio-night .night-image-main { border: 0; border-radius: 0; background: var(--st-bg); box-shadow: none; }
+.studio-shell.studio-night .text-chat-head, .studio-shell.studio-night .night-image-main > header { min-height: 64px; padding: 12px 24px; background: var(--st-panel); }
+.studio-shell.studio-night .chat-head-text h1 { font-size: 14px; }
+.studio-shell.studio-night .chat-head-text p { font-size: 11px; }
+.studio-shell.studio-night .chat-history-new { border: 1px dashed var(--st-accent-border); background: var(--st-accent-soft); color: var(--st-accent-text); box-shadow: none; }
+.studio-shell.studio-night .chat-history-item { border-radius: 8px; }
+.studio-shell.studio-night .chat-history-item.is-active { border-color: var(--st-accent-border); background: var(--st-accent-soft); }
+.studio-shell.studio-night .chat-history-summary { border-radius: 8px; background: var(--st-panel-soft); }
+.studio-shell.studio-night .chat-history-note { color: var(--st-muted); }
+.studio-shell.studio-night .text-chat-messages { padding: 26px 32px 28px; }
+.studio-shell.studio-night .chat-message-list { max-width: 880px; gap: 28px; }
+.studio-shell.studio-night .chat-message-heading { margin-bottom: 10px; }
+.studio-shell.studio-night .chat-markdown { line-height: 1.9; }
+.studio-shell.studio-night .chat-user-text { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: #2d2318; color: #f3e8d9; box-shadow: none; }
+.studio-shell.studio-night .chat-welcome { min-height: 45vh; }
+.studio-shell.studio-night .chat-examples button { border-radius: 10px; background: var(--st-panel); }
+.studio-shell.studio-night .chat-examples button:hover { background: var(--st-accent-soft); }
+.studio-shell.studio-night .text-chat-composer { padding: 12px 24px 16px; border-top: 1px solid var(--st-border); background: var(--st-panel); }
+.studio-shell.studio-night .text-chat-composer::before { background: linear-gradient(to top, var(--st-bg), transparent); }
+.studio-shell.studio-night .chat-composer-content { max-width: 880px; }
+.studio-shell.studio-night .chat-input-box { border-radius: 12px; background: var(--st-bg); box-shadow: none; }
+.studio-shell.studio-night .chat-option { height: 32px; box-shadow: none; background: var(--st-panel-soft); }
+.studio-shell.studio-night .chat-submit { border-radius: 10px; }
+.studio-shell.studio-night .chat-composer-note { margin-top: 10px; }
+.studio-shell.studio-night .chat-html-preview { border-color: var(--st-border); }
+
+/* Image conversation: surfaces and controls use the same tokens as text chat. */
+.studio-shell.studio-night .night-image-main > div[aria-live] { padding: 26px 32px 28px; }
+.studio-shell.studio-night .night-image-main > div[aria-live] > div { max-width: 880px; }
+.studio-shell.studio-night .night-image-main > div:has(> .night-image-composer) { padding: 12px 24px 16px; border-top: 1px solid var(--st-border); background: var(--st-panel); }
+.studio-shell.studio-night .night-image-composer { max-width: 880px; }
+.studio-shell.studio-night .night-image-composer > form { border-radius: 12px; border-color: var(--st-border); background: var(--st-bg); box-shadow: none; }
+.studio-shell.studio-night .night-image-composer > form:focus-within { border-color: var(--st-accent-border); }
+.studio-shell.studio-night .night-image-send { border-radius: 10px; }
+.studio-shell.studio-night .night-image-send:enabled { color: var(--st-accent-on); }
+.studio-shell.studio-night .night-user-bubble { border: 1px solid var(--st-accent-border); border-radius: 12px 4px 12px 12px; background: #2d2318; color: #f3e8d9; }
+.studio-shell.studio-night .night-user-avatar { background: var(--st-accent-soft); color: var(--st-accent-text); }
+.studio-shell.studio-night .night-image-history > div > button { border: 1px dashed var(--st-accent-border); border-radius: 8px; background: var(--st-accent-soft); color: var(--st-accent-text); box-shadow: none; }
+
+/* Real video output fills the cinema canvas; no fabricated media or timing. */
+.studio-shell.studio-night .workbench { border: 0; border-radius: 0; box-shadow: none; }
+.studio-shell.studio-night .wb-rail { background: var(--st-panel); }
+.studio-shell.studio-night .video-studio .results-scroll { padding: 24px; background: radial-gradient(ellipse at 50% 0, rgba(224,138,46,.045), transparent 58%), var(--st-bg); }
+.studio-shell.studio-night .video-studio .preview-stage { max-width: 1100px; margin-inline: auto; }
+.studio-shell.studio-night .video-studio .generation-card { border-radius: 12px; box-shadow: 0 14px 40px -28px #000; }
+.studio-shell.studio-night .video-studio .card-media { background: #07090b; }
+.studio-shell.studio-night .video-studio .composer { border-radius: 12px; background: var(--st-bg); box-shadow: none; }
+.studio-shell.studio-night .video-studio .generate-button { border-radius: 9px; box-shadow: none; }
+.studio-shell.studio-night .wb-composer { padding: 12px 24px 18px; border-top: 1px solid var(--st-border); background: var(--st-panel); }
+.studio-shell.studio-night .video-studio .results-header { padding-inline: 20px; }
+.studio-shell.studio-night .video-studio .empty-results { max-width: 640px; margin-inline: auto; }
+.studio-shell.studio-night .asset-media { background: #0a0c0e; }
+.studio-shell.studio-night .asset-card { border-radius: 10px; }
+.studio-shell.studio-night .prompt-grid .studio-card { border-radius: 10px; background: var(--st-panel-soft); }
+.studio-shell.studio-night .config-section { border-radius: 12px; }
+.studio-shell.studio-night .config-section + .config-section { margin-top: 4px; }
+.studio-shell.studio-night .config-root { padding: 24px; overflow-y: auto; height: 100%; }
+
+@media (min-width: 900px) and (max-width: 1279px) {
+  .studio-shell.studio-night .studio-topbar { gap: 12px; }
+  .studio-shell.studio-night .studio-brand-sub { display: none; }
+  .studio-shell.studio-night .studio-nav-item { padding: 8px 10px; font-size: 12px; }
+  .studio-shell.studio-night .studio-topbar-actions { display: none; }
+}
+@media (max-width: 899px) {
+  .studio-shell.studio-night .studio-topbar { min-height: auto; gap: 10px; padding: 12px; }
+  .studio-shell.studio-night .studio-brand-sub { display: none; }
+  .studio-shell.studio-night .studio-nav { border-radius: 12px; padding: 4px; }
+  .studio-shell.studio-night .studio-nav-item { padding: 8px 6px; border-radius: 8px; font-size: 12px; gap: 5px; }
+  .studio-shell.studio-night .studio-nav-item.is-active::after { display: none; }
+}
+@media (max-width: 639px) {
+  .studio-page { padding: 0; }
+  .studio-shell.studio-night.studio-frame { border: 0; border-radius: 0; }
+  .studio-night--standalone { height: 100dvh; }
+  .studio-night--embedded { height: calc(100dvh - 7.5rem); min-height: 360px; }
+  .studio-shell.studio-night .studio-brand-title { font-size: 13px; }
+  .studio-shell.studio-night .studio-brand-mark { width: 28px; height: 28px; border-radius: 8px; }
+  .studio-shell.studio-night .text-chat-head, .studio-shell.studio-night .night-image-main > header { min-height: 58px; padding: 10px 12px; }
+  .studio-shell.studio-night .text-chat-messages, .studio-shell.studio-night .night-image-main > div[aria-live] { padding: 18px 12px 24px; }
+  .studio-shell.studio-night .chat-message-list { gap: 22px; }
+  .studio-shell.studio-night .text-chat-composer, .studio-shell.studio-night .night-image-main > div:has(> .night-image-composer) { padding: 10px 12px 12px; }
+  .studio-shell.studio-night .chat-composer-note { display: none; }
+  .studio-shell.studio-night .chat-input-box textarea { min-height: 40px; }
+  .studio-shell.studio-night .video-studio .results-scroll { padding: 16px 12px; }
+  .studio-shell.studio-night .wb-composer { padding: 10px 12px 12px; }
+  .studio-shell.studio-night .video-studio .results-header { padding-inline: 12px; }
+  .studio-shell.studio-night .studio-panel-head { padding: 12px; }
+  .studio-shell.studio-night .config-root { padding: 14px; }
+}

@@ -116,7 +116,7 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
 .reference-controls > label,.reference-add > label { font-weight:600; }
 .reference-controls select,.reference-url-row input { width:100%; min-width:0; border:1px solid var(--vs-border,#dce2df); background:var(--vs-surface,#fff); color:inherit; border-radius:8px; padding:9px; }
 .reference-hint { color:var(--vs-secondary,#738078); line-height:1.6; margin:0; overflow-wrap:anywhere; }
-.reference-error { color:#c24135; line-height:1.6; margin:0; }
+.reference-error { color:var(--vs-danger,#c24135); line-height:1.6; margin:0; }
 .reference-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 .reference-card { min-width:0; border:1px solid var(--vs-border,#dce2df); border-radius:8px; overflow:hidden; }
 .reference-card img { width:100%; height:72px; object-fit:cover; background:var(--vs-surface,#f5f7f6); }
@@ -133,7 +133,7 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
 .reference-upload input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
 .reference-url-row { display:flex; gap:6px; }
 .reference-check { display:flex; align-items:center; gap:8px; }
-.reference-check input { accent-color:#16875e; }
+.reference-check input { accent-color:var(--vs-accent,#16875e); }
 
 @media(max-width:360px) { .reference-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 </style>

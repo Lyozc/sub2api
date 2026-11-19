@@ -1,5 +1,5 @@
 <template>
-  <div class="config-wrap">
+  <div class="config-wrap config-root">
     <section class="studio-panel config-section" :aria-label="t('canvas.configApi')">
       <div class="studio-panel-head">
         <div class="studio-panel-title">

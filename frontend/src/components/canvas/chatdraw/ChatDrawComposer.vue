@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative mx-auto w-full max-w-3xl"
+    class="night-image-composer relative mx-auto w-full max-w-3xl"
     @dragenter.prevent="dragOver = true"
     @dragover.prevent="dragOver = true"
     @dragleave="onDragLeave"
@@ -12,8 +12,8 @@
         <button
           ref="settingsButton"
           type="button"
-          class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border bg-white/95 px-3 text-xs text-gray-700 shadow-sm backdrop-blur transition-colors hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-dark-800/95 dark:text-gray-200 dark:hover:border-dark-400"
-          :class="settingsOpen ? 'border-emerald-400 dark:border-emerald-500' : 'border-gray-200 dark:border-dark-600'"
+          class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border bg-[var(--st-panel)]/95 px-3 text-xs text-[var(--st-text-soft)] shadow-sm backdrop-blur transition-colors hover:border-[var(--st-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--st-focus)]"
+          :class="settingsOpen ?'border-[var(--st-accent-border)]' :'border-[var(--st-border)]'"
           :title="`${t('canvasChat.settings')}: ${settingsSummary}`"
           :aria-label="`${t('canvasChat.settings')}: ${settingsSummary}`"
           :aria-expanded="settingsOpen"
@@ -21,72 +21,73 @@
         >
           <Icon name="slidersHorizontal" size="sm" class="shrink-0" aria-hidden="true" />
           <span class="min-w-0 truncate font-medium">{{ settingsSummary }}</span>
-          <Icon name="chevronDown" size="xs" class="shrink-0 transition-transform" :class="settingsOpen ? 'rotate-180' : ''" aria-hidden="true" />
+          <Icon name="chevronDown" size="xs" class="shrink-0 transition-transform" :class="settingsOpen ?'rotate-180' :''" aria-hidden="true" />
         </button>
         <div
           v-if="settingsOpen"
           role="group"
+          :style="{ maxHeight: `${settingsMaxHeight}px` }"
           :aria-label="t('canvasChat.settings')"
-          class="absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-[min(28rem,calc(100vw-3rem))] space-y-4 rounded-2xl border border-gray-200 bg-white p-3.5 shadow-xl dark:border-dark-600 dark:bg-dark-800"
+          class="chat-draw-settings absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-[min(28rem,calc(100vw-3rem))] overflow-y-auto space-y-4 rounded-2xl border border-[var(--st-border)] bg-[var(--st-panel)] p-3.5 shadow-xl"
         >
           <section>
-            <h3 class="mb-2 text-xs font-bold text-gray-500 dark:text-gray-400">{{ t('canvasChat.imageSettings') }}</h3>
+            <h3 class="mb-2 text-xs font-bold text-[var(--st-muted)]">{{ t('canvasChat.imageSettings') }}</h3>
             <div class="flex flex-wrap items-center gap-2">
               <ChatDrawToolbarSelect :model-value="selectedModel" :options="modelOptions" :label="t('imageStudio.model')" :empty-text="t('imageStudio.noImageModels')" @change="setModel" />
               <ChatDrawToolbarSelect :model-value="ratio" :options="ratioOptions" :label="t('canvas.aspectRatio')" @change="setRatio" />
             </div>
             <div class="mt-3 space-y-3">
               <div>
-                <div class="mb-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{{ t('canvasChat.resolution') }}</div>
+                <div class="mb-1.5 text-[11px] font-semibold text-[var(--st-muted)]">{{ t('canvasChat.resolution') }}</div>
                 <div class="grid grid-cols-2 gap-1.5">
                   <button
                     v-for="option in resolutionOptions"
                     :key="option.value"
                     type="button"
-                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40"
-                    :class="ratio === 'auto'
-                      ? 'border-gray-200 bg-gray-100 text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-500'
+                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--st-focus)] disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="ratio ==='auto'
+                      ?'border-[var(--st-border)] bg-[var(--st-surface)] text-[var(--st-muted)]'
                       : resolution === option.value
-                        ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
-                    :disabled="ratio === 'auto'"
+                        ?'border-[var(--st-accent)] bg-[var(--st-accent)] text-[var(--st-accent-on)]'
+                        :'border-[var(--st-border)] bg-[var(--st-panel)] text-[var(--st-text-soft)] hover:border-[var(--st-border-strong)]'"
+                    :disabled="ratio ==='auto'"
                     :aria-pressed="resolution === option.value"
                     @click="setResolution(option.value)"
                   >{{ option.label }}</button>
                 </div>
               </div>
               <div>
-                <div class="mb-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{{ t('imageStudio.quality') }}</div>
+                <div class="mb-1.5 text-[11px] font-semibold text-[var(--st-muted)]">{{ t('imageStudio.quality') }}</div>
                 <div class="grid grid-cols-4 gap-1.5">
                   <button
                     v-for="option in qualityOptions"
                     :key="option.value"
                     type="button"
-                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--st-focus)]"
                     :class="quality === option.value
-                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
+                      ?'border-[var(--st-accent)] bg-[var(--st-accent)] text-[var(--st-accent-on)]'
+                      :'border-[var(--st-border)] bg-[var(--st-panel)] text-[var(--st-text-soft)] hover:border-[var(--st-border-strong)]'"
                     :aria-pressed="quality === option.value"
                     @click="setQuality(option.value)"
                   >{{ option.label }}</button>
                 </div>
               </div>
               <div v-if="!singleOutput">
-                <div class="mb-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{{ t('canvasChat.count') }}</div>
+                <div class="mb-1.5 text-[11px] font-semibold text-[var(--st-muted)]">{{ t('canvasChat.count') }}</div>
                 <div class="grid grid-cols-4 gap-1.5">
                   <button
                     v-for="n in CHAT_COUNTS"
                     :key="n"
                     type="button"
-                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--st-focus)]"
                     :class="count === n
-                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
+                      ?'border-[var(--st-accent)] bg-[var(--st-accent)] text-[var(--st-accent-on)]'
+                      :'border-[var(--st-border)] bg-[var(--st-panel)] text-[var(--st-text-soft)] hover:border-[var(--st-border-strong)]'"
                     :aria-pressed="count === n"
                     @click="setCount(n)"
                   >{{ t('canvasChat.countN', { n }) }}</button>
                 </div>
-                <label class="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <label class="mt-2 flex items-center gap-2 text-xs text-[var(--st-muted)]">
                   <span class="shrink-0">{{ t('canvasChat.customCount') }}</span>
                   <input
                     v-model="countDraft"
@@ -95,34 +96,34 @@
                     :max="MAX_CHAT_COUNT"
                     step="1"
                     inputmode="numeric"
-                    class="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-500 focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200"
+                    class="h-8 min-w-0 flex-1 rounded-lg border border-[var(--st-border)] bg-[var(--st-panel)] px-2 text-xs text-[var(--st-text-soft)] outline-none focus:border-[var(--st-accent-border)] focus:ring-2 focus:ring-[var(--st-focus)]/30"
                     :aria-label="t('canvasChat.customCount')"
                     @blur="commitCount"
                     @keydown.enter.stop.prevent="commitCount"
                   />
                 </label>
-                <p class="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{{ t('canvasChat.customCountHint', { max: MAX_CHAT_COUNT }) }}</p>
+                <p class="mt-1 text-[10px] text-[var(--st-muted)]">{{ t('canvasChat.customCountHint', { max: MAX_CHAT_COUNT }) }}</p>
               </div>
               <div>
-                <div class="mb-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{{ t('canvasChat.outputFormat') }}</div>
+                <div class="mb-1.5 text-[11px] font-semibold text-[var(--st-muted)]">{{ t('canvasChat.outputFormat') }}</div>
                 <div class="grid grid-cols-4 gap-1.5">
                   <button
                     v-for="option in formatOptions"
                     :key="option.value"
                     type="button"
-                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    class="h-8 rounded-lg border px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--st-focus)]"
                     :class="format === option.value
-                      ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400'"
+                      ?'border-[var(--st-accent)] bg-[var(--st-accent)] text-[var(--st-accent-on)]'
+                      :'border-[var(--st-border)] bg-[var(--st-panel)] text-[var(--st-text-soft)] hover:border-[var(--st-border-strong)]'"
                     :aria-pressed="format === option.value"
                     @click="setFormat(option.value)"
                   >{{ option.label }}</button>
                 </div>
               </div>
-              <div v-if="format === 'gif'">
-                <div class="mb-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">{{ t('canvasChat.gifParams') }}</div>
+              <div v-if="format ==='gif'">
+                <div class="mb-1.5 text-[11px] font-semibold text-[var(--st-muted)]">{{ t('canvasChat.gifParams') }}</div>
                 <div class="flex items-center gap-2">
-                  <label class="flex flex-1 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <label class="flex flex-1 items-center gap-2 text-xs text-[var(--st-muted)]">
                     <span class="shrink-0">{{ t('canvasChat.gifFrames') }}</span>
                     <input
                       v-model="gifFramesDraft"
@@ -131,13 +132,13 @@
                       :max="GIF_FRAMES_MAX"
                       step="1"
                       inputmode="numeric"
-                      class="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-500 focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200"
+                      class="h-8 min-w-0 flex-1 rounded-lg border border-[var(--st-border)] bg-[var(--st-panel)] px-2 text-xs text-[var(--st-text-soft)] outline-none focus:border-[var(--st-accent-border)] focus:ring-2 focus:ring-[var(--st-focus)]/30"
                       :aria-label="t('canvasChat.gifFrames')"
                       @blur="commitGifFrames"
                       @keydown.enter.stop.prevent="commitGifFrames"
                     />
                   </label>
-                  <label class="flex flex-1 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <label class="flex flex-1 items-center gap-2 text-xs text-[var(--st-muted)]">
                     <span class="shrink-0">{{ t('canvasChat.gifFrameMs') }}</span>
                     <input
                       v-model="gifFrameMsDraft"
@@ -146,22 +147,22 @@
                       :max="GIF_FRAME_MS_MAX"
                       step="10"
                       inputmode="numeric"
-                      class="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-gray-500 focus:ring-2 focus:ring-primary-500/30 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200"
+                      class="h-8 min-w-0 flex-1 rounded-lg border border-[var(--st-border)] bg-[var(--st-panel)] px-2 text-xs text-[var(--st-text-soft)] outline-none focus:border-[var(--st-accent-border)] focus:ring-2 focus:ring-[var(--st-focus)]/30"
                       :aria-label="t('canvasChat.gifFrameMs')"
                       @blur="commitGifFrameMs"
                       @keydown.enter.stop.prevent="commitGifFrameMs"
                     />
                   </label>
                 </div>
-                <p class="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{{ t('canvasChat.gifHint') }}</p>
+                <p class="mt-1 text-[10px] text-[var(--st-muted)]">{{ t('canvasChat.gifHint') }}</p>
               </div>
-              <p v-if="format === 'svg'" class="text-[10px] text-gray-400 dark:text-gray-500">
+              <p v-if="format ==='svg'" class="text-[10px] text-[var(--st-muted)]">
                 {{ aiKeyId ? t('canvasChat.svgHint') : t('canvasChat.svgNeedKey') }}
               </p>
             </div>
           </section>
-          <section class="border-t border-gray-100 pt-3 dark:border-dark-600">
-            <h3 class="mb-2 text-xs font-bold text-gray-500 dark:text-gray-400">{{ t('canvasChat.polishSettings') }}</h3>
+          <section class="border-t border-[var(--st-border)] pt-3">
+            <h3 class="mb-2 text-xs font-bold text-[var(--st-muted)]">{{ t('canvasChat.polishSettings') }}</h3>
             <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -169,8 +170,8 @@
                 :aria-checked="polishEnabled"
                 class="inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs shadow-sm backdrop-blur transition-colors"
                 :class="polishEnabled
-                  ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-200'
-                  : 'border-gray-200 bg-white/95 text-gray-600 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800/95 dark:text-gray-300'"
+                  ?'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-900/30 dark:text-violet-200'
+                  :'border-[var(--st-border)] bg-[var(--st-panel)]/95 text-[var(--st-text-soft)] hover:border-[var(--st-border-strong)]'"
                 @click="togglePolish"
               ><Icon name="sparkles" size="xs" />{{ t('canvasChat.polish') }}</button>
               <template v-if="polishEnabled">
@@ -185,7 +186,7 @@
 
     <!-- 输入卡片 -->
     <form
-      class="relative flex flex-col gap-2 rounded-[1.4rem] border border-gray-200/90 bg-white p-2.5 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] transition-colors focus-within:border-emerald-300 focus-within:shadow-[0_12px_34px_-14px_rgba(5,150,105,0.3)] dark:border-dark-600 dark:bg-dark-900 dark:shadow-[0_10px_28px_rgba(0,0,0,0.38)] dark:focus-within:border-emerald-700"
+      class="relative flex flex-col gap-2 rounded-[1.4rem] border border-[var(--st-border)]/90 bg-[var(--st-panel)] p-2.5 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] transition-colors focus-within:border-[var(--st-accent-border)]"
       @submit.prevent="submit"
       @click="focus"
     >
@@ -194,7 +195,7 @@
         <div
           v-for="(r, i) in draftRefs"
           :key="r.url"
-          class="group relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-sm dark:border-dark-600 dark:bg-dark-800"
+          class="group relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-[var(--st-border)] bg-[var(--st-panel-soft)] shadow-sm"
         >
           <button type="button" class="block h-full w-full cursor-zoom-in" :aria-label="t('canvasChat.refN', { n: i + 1 })" @click="emit('preview', r.url)">
             <img :src="r.url" class="h-full w-full object-cover" draggable="false" :alt="t('canvasChat.refN', { n: i + 1 })" />
@@ -210,7 +211,7 @@
         <button
           v-if="draftRefs.length < MAX_REFS"
           type="button"
-          class="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border border-dashed border-gray-300 text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-700 dark:border-dark-500 dark:hover:border-dark-300 dark:hover:text-gray-200"
+          class="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border border-dashed border-[var(--st-border-strong)] text-[var(--st-muted)] transition-colors hover:border-[var(--st-accent-border)] hover:text-[var(--st-text-soft)]"
           :aria-label="t('canvasChat.addRef')"
           :title="t('canvasChat.addRef')"
           @click="pickFiles"
@@ -224,7 +225,7 @@
         maxlength="4000"
         :aria-label="t('imageStudio.prompt')"
         :placeholder="draftRefs.length ? t('canvasChat.placeholderWithRefs') : t('canvasChat.placeholder')"
-        class="max-h-[8.5rem] min-h-[2.75rem] w-full resize-none overflow-y-hidden bg-transparent px-1.5 py-1 text-[15px] leading-[1.5] text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100 dark:placeholder:text-gray-500 max-sm:text-base"
+        class="max-h-[8.5rem] min-h-[2.75rem] w-full resize-none overflow-y-hidden bg-transparent px-1.5 py-1 text-[15px] leading-[1.5] text-[var(--st-text)] outline-none placeholder:text-[var(--st-muted)] max-sm:text-base"
         @keydown="onKeydown"
         @paste="onPaste"
         @input="autoGrow"
@@ -234,13 +235,13 @@
         <div class="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-400 dark:hover:text-white"
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--st-border)] text-[var(--st-text-soft)] transition-colors hover:border-[var(--st-border-strong)] hover:text-[var(--st-text)] disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="draftRefs.length >= MAX_REFS"
             :aria-label="t('canvasChat.addRef')"
             :title="t('canvasChat.addRef')"
             @click="pickFiles"
           ><Icon name="plus" size="md" /></button>
-          <span class="hidden truncate text-[11px] text-gray-400 sm:inline">{{ t('canvasChat.hint') }}</span>
+          <span class="hidden truncate text-[11px] text-[var(--st-muted)] sm:inline">{{ t('canvasChat.hint') }}</span>
         </div>
         <div class="flex shrink-0 items-center gap-2">
         <button
@@ -248,8 +249,8 @@
           type="button"
           class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all"
           :class="canPolish
-            ? 'border-amber-300/70 bg-amber-50 text-amber-600 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-300'
-            : 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-500'"
+            ?'border-[var(--st-warn-border)]/70 bg-[var(--st-warn-soft)] text-[var(--st-warn)] hover:bg-[var(--st-warn-soft)]'
+            :'cursor-not-allowed border-[var(--st-border)] bg-[var(--st-surface)] text-[var(--st-muted)]'"
           :disabled="!canPolish"
           :aria-label="t('canvasChat.polishDraft')"
           :title="t('canvasChat.polishDraft')"
@@ -261,7 +262,7 @@
         <button
           v-if="running"
           type="button"
-          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-red-300/60 bg-red-50 text-red-600 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300"
+          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--st-danger-border)]/60 bg-[var(--st-danger-soft)] text-[var(--st-danger)] transition-colors hover:bg-[var(--st-danger-soft)]"
           :aria-label="t('imageStudio.stopBatch')"
           :title="t('imageStudio.stopBatch')"
           @click="stopAll"
@@ -269,10 +270,10 @@
         <button
           v-else
           type="submit"
-          class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all"
+          class="night-image-send flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all"
           :class="canSend
-            ? 'bg-emerald-600 text-white shadow-[0_10px_24px_-14px_rgba(5,150,105,0.95)] hover:-translate-y-px hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400'
-            : 'cursor-not-allowed border border-gray-200 bg-gray-100 text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-500'"
+            ?'bg-[var(--st-accent)] text-[var(--st-accent-on)] shadow-none hover:-translate-y-px hover:bg-[var(--st-accent-hover)]'
+            :'cursor-not-allowed border border-[var(--st-border)] bg-[var(--st-surface)] text-[var(--st-muted)]'"
           :disabled="!canSend"
           :aria-label="t('canvasChat.send')"
           :title="t('canvasChat.send')"
@@ -284,7 +285,7 @@
 
       <div
         v-if="dragOver"
-        class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[1.4rem] border-2 border-dashed border-gray-400 bg-white/90 text-sm font-semibold text-gray-700 backdrop-blur-sm dark:border-dark-400 dark:bg-dark-900/90 dark:text-gray-200"
+        class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[1.4rem] border-2 border-dashed border-[var(--st-border-strong)] bg-[var(--st-panel)]/90 text-sm font-semibold text-[var(--st-text-soft)] backdrop-blur-sm"
       ><Icon name="upload" size="sm" />{{ t('canvasChat.dropHere') }}</div>
     </form>
     <input ref="fileEl" type="file" accept="image/png,image/jpeg,image/webp" multiple class="hidden" @change="onFiles" />
@@ -382,6 +383,13 @@ const settingsSummary = computed(() => {
   return format.value === 'auto' ? summary : `${summary} · ${selectedFormat?.label}`
 })
 
+const settingsMaxHeight = ref(600)
+function fitSettings() {
+  const anchor = settingsAnchor.value
+  if (!anchor) return
+  const top = anchor.closest('main')?.getBoundingClientRect().top ?? 0
+  settingsMaxHeight.value = Math.max(100, anchor.getBoundingClientRect().top - top - 12)
+}
 function onSettingsPointer(e: PointerEvent) {
   if (settingsAnchor.value && !settingsAnchor.value.contains(e.target as Node)) settingsOpen.value = false
 }
@@ -393,10 +401,19 @@ function onSettingsEscape(e: KeyboardEvent) {
   settingsButton.value?.focus()
 }
 watch(settingsOpen, open => {
-  if (open) document.addEventListener('pointerdown', onSettingsPointer)
-  else document.removeEventListener('pointerdown', onSettingsPointer)
+  if (open) {
+    fitSettings()
+    window.addEventListener('resize', fitSettings)
+    document.addEventListener('pointerdown', onSettingsPointer)
+  } else {
+    window.removeEventListener('resize', fitSettings)
+    document.removeEventListener('pointerdown', onSettingsPointer)
+  }
 })
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onSettingsPointer))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', fitSettings)
+  document.removeEventListener('pointerdown', onSettingsPointer)
+})
 
 // 工具条选择回写引擎设置
 function setModel(v: ToolbarValue) {

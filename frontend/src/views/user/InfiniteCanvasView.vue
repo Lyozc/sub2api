@@ -1,9 +1,8 @@
 <template>
-  <component :is="standalone ? 'div' : AppLayout" :class="standalone ? 'min-h-screen bg-gray-50 p-3 dark:bg-dark-950' : ''">
+  <component :is="standalone ? 'div' : AppLayout" :class="standalone ? 'studio-page' : ''">
     <div
-      class="studio-shell studio-frame flex flex-col overflow-hidden lg:min-h-[560px] lg:overflow-hidden"
-      :class="standalone ? 'lg:h-[calc(100dvh-1.5rem)]' : 'lg:h-[calc(100dvh-9rem)]'"
-      :style="['video', 'conversation'].includes(activeTab) ? { height: standalone ? 'calc(100dvh - 1.5rem)' : 'calc(100dvh - 9rem)', minHeight: '520px', overflow: 'hidden' } : undefined"
+      class="studio-shell studio-frame studio-night flex flex-col overflow-hidden"
+      :class="standalone ? 'studio-night--standalone' : 'studio-night--embedded'"
     >
       <!-- 工作台头部:品牌 + 主导航(移动端导航可横向滑动) -->
       <header class="studio-topbar shrink-0">
@@ -61,6 +60,7 @@ import CanvasAssets from '@/components/canvas/CanvasAssets.vue'
 import CanvasConfig from '@/components/canvas/CanvasConfig.vue'
 import { activeTab } from '@/composables/useInfiniteCanvas'
 import '@/components/canvas/studio-shell.css'
+import '@/components/canvas/studio-night.css'
 
 const CanvasChatDraw = defineAsyncComponent(() => import('@/components/canvas/CanvasChatDraw.vue'))
 const CanvasConversation = defineAsyncComponent(() => import('@/components/canvas/CanvasConversation.vue'))
@@ -84,7 +84,7 @@ function openStandalone() {
 
 const TABS = [
   { value: 'conversation' as const, label: 'canvas.tabConversation', icon: 'chat' as const },
-  { value: 'chat' as const, label: 'canvas.tabChat', icon: 'chat' as const },
+  { value: 'chat' as const, label: 'canvas.tabChat', icon: 'sparkles' as const },
   { value: 'video' as const, label: 'canvas.tabVideo', icon: 'play' as const },
   { value: 'prompts' as const, label: 'canvas.tabPrompts', icon: 'lightbulb' as const },
   { value: 'assets' as const, label: 'canvas.tabAssets', icon: 'grid' as const },
