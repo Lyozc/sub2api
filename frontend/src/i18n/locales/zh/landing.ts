@@ -40,6 +40,10 @@ export default {
     "htmlPreview": "HTML 页面预览",
     "retryReply": "重新回复",
     "retryHint": "这会发起新的请求，并按所选模型计费。",
+    "zoomHtml": "放大预览",
+    "exitHtmlZoom": "退出放大",
+    "collapseHistory": "收起对话历史",
+    "expandHistory": "展开对话历史",
     "latest": "回到最新消息",
     "input": "聊天内容",
     "placeholder": "输入消息，开始或继续对话…",
@@ -181,7 +185,19 @@ export default {
     noAssets: '还没有资产,去对话生图或视频创作台创作吧',
     assetsEmptyTitle: '资产库还是空的',
     assetsNoMatch: '没有匹配的资产',
-    assetsNoMatchHint: '换个关键词试试，或清空搜索查看全部产出。',
+    assetsNoMatchHint: '换个关键词试试，或清空筛选查看全部产出。',
+    assetsFilterLabel: '按类型筛选资产',
+    assetsFilter: {
+      all: '全部',
+      image: '图片',
+      video: '视频'
+    },
+    assetsNoKind: {
+      image: '当前还没有图片产出，去对话生图创作一张。',
+      video: '当前还没有视频产出，去视频创作台生成一支。'
+    },
+    assetsClearFilters: '清除筛选',
+    assetsNoPrompt: '无提示词',
     kindImage: '图片',
     kindVideo: '视频',
     aiPrompt: 'AI 优化',

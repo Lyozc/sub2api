@@ -165,8 +165,12 @@
   text-overflow: ellipsis;
 }
 
+/* Narrow screens lay the six sections out as a wrapping grid so every tab is
+ * visible without horizontal scrolling. From 900px up the nav goes back to a
+ * single auto-width row beside the brand. */
 .studio-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
   flex: 1 1 100%;
   order: 3;
@@ -175,7 +179,6 @@
   border: 1px solid var(--st-border);
   border-radius: 12px;
   background: var(--st-surface);
-  overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
@@ -186,10 +189,12 @@
 
 .studio-nav-item {
   display: inline-flex;
+  min-width: 0;
   flex: 0 0 auto;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 11px;
+  padding: 7px 8px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -201,6 +206,15 @@
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
+}
+
+/* Keeps long labels (for example the English section names) inside their grid
+ * cell instead of widening the row. */
+.studio-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .studio-nav-item > svg {
@@ -274,8 +288,13 @@
 
 @media (min-width: 900px) {
   .studio-nav {
+    display: flex;
     flex: 0 1 auto;
     order: 0;
+    overflow-x: auto;
+  }
+  .studio-nav-item {
+    padding: 7px 11px;
   }
 }
 

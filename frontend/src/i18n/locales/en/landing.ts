@@ -40,6 +40,10 @@ export default {
     "htmlPreview": "HTML page preview",
     "retryReply": "Reply again",
     "retryHint": "This sends a new request and is billed using the selected model.",
+    "zoomHtml": "Zoom preview",
+    "exitHtmlZoom": "Exit zoom",
+    "collapseHistory": "Collapse chat history",
+    "expandHistory": "Expand chat history",
     "latest": "Latest messages",
     "input": "Chat message",
     "placeholder": "Type a message to start or continue the conversation…",
@@ -181,7 +185,19 @@ export default {
     noAssets: 'No assets yet, create in the studios first',
     assetsEmptyTitle: 'Your asset library is empty',
     assetsNoMatch: 'No matching assets',
-    assetsNoMatchHint: 'Try another keyword, or clear the search to see every output.',
+    assetsNoMatchHint: 'Try another keyword, or clear the filters to see every output.',
+    assetsFilterLabel: 'Filter assets by type',
+    assetsFilter: {
+      all: 'All',
+      image: 'Images',
+      video: 'Videos'
+    },
+    assetsNoKind: {
+      image: 'No images yet. Create one in Chat Draw.',
+      video: 'No videos yet. Generate one in Video Studio.'
+    },
+    assetsClearFilters: 'Clear filters',
+    assetsNoPrompt: 'No prompt',
     kindImage: 'Image',
     kindVideo: 'Video',
     aiPrompt: 'AI Enhance',

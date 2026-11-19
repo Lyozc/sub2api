@@ -2,7 +2,7 @@
   <div class="chat-history">
     <div class="chat-history-heading">
       <strong>{{ t('studioChat.history') }}</strong>
-      <button v-if="closable" type="button" class="studio-icon-btn" :aria-label="t('common.close')" @click="$emit('close')"><Icon name="x" size="sm" /></button>
+      <button v-if="closable" type="button" class="studio-icon-btn" :aria-label="closeLabel || t('common.close')" :title="closeLabel || t('common.close')" @click="emit('close')"><Icon :name="closeIcon ?? 'x'" size="sm" /></button>
     </div>
     <button type="button" class="studio-btn studio-btn--primary" :disabled="!chatReady" @click="create"><Icon name="plus" size="sm" />{{ t('studioChat.newChat') }}</button>
     <label class="studio-field"><Icon name="search" size="xs" /><input v-model="search" :placeholder="t('studioChat.search')" :aria-label="t('studioChat.search')" /></label>
@@ -33,13 +33,14 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { chatActiveId, chatReady, sortedChats, newChat, selectChat, deleteChat, renameChat, isChatRunning } from '@/composables/useStudioChat'
-defineProps<{ closable?: boolean }>()
-const emit = defineEmits<{ close: [] }>()
+defineProps<{ closable?: boolean; closeLabel?: string; closeIcon?: 'x' | 'chevronLeft' }>()
+/** close:用户主动关闭/收起;navigate:选中或新建对话后(抽屉用它自动收起) */
+const emit = defineEmits<{ close: []; navigate: [] }>()
 const { t, locale } = useI18n()
 const search = ref(''), editing = ref(''), title = ref('')
 const filtered = computed(() => sortedChats.value.filter(row => row.title.toLowerCase().includes(search.value.trim().toLowerCase())))
-function create() { newChat(); emit('close') }
-function select(id: string) { selectChat(id); emit('close') }
+function create() { newChat(); emit('navigate') }
+function select(id: string) { selectChat(id); emit('navigate') }
 async function remove(id: string) { if (window.confirm(t('studioChat.deleteConfirm'))) await deleteChat(id) }
 async function rename(id: string) { await renameChat(id, title.value); editing.value = '' }
 function formatDate(timestamp: number) { return new Intl.DateTimeFormat(locale.value, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(timestamp) }

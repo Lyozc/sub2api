@@ -24,7 +24,7 @@
             :class="activeTab === tab.value ? 'is-active' : ''"
             :aria-current="activeTab === tab.value ? 'page' : undefined"
             @click="switchTab(tab.value)"
-          ><Icon :name="tab.icon" size="sm" aria-hidden="true" />{{ t(tab.label) }}</button>
+          ><Icon :name="tab.icon" size="sm" aria-hidden="true" /><span class="studio-nav-label">{{ t(tab.label) }}</span></button>
         </nav>
 
         <div class="studio-topbar-actions">

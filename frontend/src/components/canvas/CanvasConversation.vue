@@ -1,13 +1,16 @@
 <template>
   <section class="studio-panel text-chat" :aria-label="t('canvas.tabConversation')">
-    <aside class="text-chat-sidebar"><StudioChatHistory /></aside>
+    <aside v-if="!sidebarCollapsed" class="text-chat-sidebar">
+      <StudioChatHistory closable close-icon="chevronLeft" :close-label="t('studioChat.collapseHistory')" @close="sidebarCollapsed = true" />
+    </aside>
     <div v-if="historyOpen" class="studio-shell chat-history-overlay" @click.self="historyOpen = false">
-      <aside ref="historyDialog" class="chat-history-drawer" role="dialog" aria-modal="true" :aria-label="t('studioChat.history')" tabindex="-1"><StudioChatHistory closable @close="historyOpen = false" /></aside>
+      <aside ref="historyDialog" class="chat-history-drawer" role="dialog" aria-modal="true" :aria-label="t('studioChat.history')" tabindex="-1"><StudioChatHistory closable @close="historyOpen = false" @navigate="historyOpen = false" /></aside>
     </div>
     <main class="text-chat-main">
       <header class="studio-panel-head text-chat-head">
         <div class="studio-panel-title">
-          <button type="button" class="studio-icon-btn text-chat-history-toggle" :aria-label="t('studioChat.history')" @click="historyOpen = true"><Icon name="menu" size="sm" /></button>
+          <button type="button" class="studio-icon-btn text-chat-history-toggle" :aria-label="t('studioChat.history')" :title="t('studioChat.history')" @click="historyOpen = true"><Icon name="menu" size="sm" /></button>
+          <button v-if="sidebarCollapsed" type="button" class="studio-icon-btn text-chat-sidebar-toggle" :aria-label="t('studioChat.expandHistory')" :title="t('studioChat.expandHistory')" @click="sidebarCollapsed = false"><Icon name="chevronRight" size="sm" /></button>
           <span class="studio-title-mark text-chat-desktop-mark" aria-hidden="true"><Icon name="chat" size="sm" /></span>
           <div class="min-w-0"><h1 class="studio-heading">{{ t('canvas.tabConversation') }}</h1><p class="studio-subheading">{{ t('studioChat.subtitle') }}</p></div>
         </div>
@@ -35,9 +38,13 @@
             <div v-if="message.content || message.status === 'failed' || message.status === 'stopped'" class="chat-message-actions">
               <button v-if="message.content" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-label="t('studioChat.copy')" @click="copy(message.content)"><Icon name="copy" size="xs" />{{ copied === message.content ? t('studioChat.copied') : t('studioChat.copy') }}</button>
               <button v-if="message.role === 'assistant' && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlPreview[message.id] === true" @click="toggleHtmlPreview(message.id)"><Icon name="eye" size="xs" />{{ htmlPreview[message.id] ? t('studioChat.showHtmlCode') : t('studioChat.previewHtml') }}</button>
+              <button v-if="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlZoomId === message.id" @click="toggleHtmlZoom(message.id, $event)"><Icon name="arrowsUpDown" size="xs" />{{ htmlZoomId === message.id ? t('studioChat.exitHtmlZoom') : t('studioChat.zoomHtml') }}</button>
               <button v-if="message.role === 'assistant' && ['failed', 'stopped'].includes(message.status) && index === activeChat.messages.length - 1" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="chatActiveBusy || !!chatStorageError" @click="sendChat(true)"><Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}</button>
             </div>
-            <iframe v-if="htmlPreviewCreated[message.id]" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+            <div v-if="htmlPreviewCreated[message.id]" :ref="element => registerHtmlFrame(message.id, element)" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-frame" :class="htmlZoomId === message.id ? 'is-zoomed' : ''" :role="htmlZoomId === message.id ? 'dialog' : undefined" :aria-modal="htmlZoomId === message.id ? true : undefined" :aria-label="htmlZoomId === message.id ? t('studioChat.htmlPreview') : undefined" tabindex="-1">
+              <button v-if="htmlZoomId === message.id" type="button" class="studio-btn studio-btn--ghost studio-btn--sm chat-html-exit" @click="exitHtmlZoom()"><Icon name="x" size="xs" />{{ t('studioChat.exitHtmlZoom') }}</button>
+              <iframe class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer" tabindex="0"></iframe>
+            </div>
           </article>
         </div>
       </div>
@@ -73,6 +80,13 @@ const { t } = useI18n(), app = useAppStore()
 const scroller = ref<HTMLElement>(), input = ref<HTMLTextAreaElement>(), atBottom = ref(true), historyOpen = ref(false), historyDialog = ref<HTMLElement>(), copied = ref('')
 const htmlPreview = ref<Record<string, boolean>>({})
 const htmlPreviewCreated = ref<Record<string, boolean>>({})
+/** 放大预览的消息 id;放大只改样式,iframe 不重建,sandbox/srcdoc 保持不变 */
+const htmlZoomId = ref('')
+const sidebarCollapsed = ref(false)
+let zoomOrigin: HTMLElement | null = null
+const htmlFrames = new Map<string, HTMLElement>()
+const zoomDialog = computed(() => htmlZoomId.value ? htmlFrames.get(htmlZoomId.value) : undefined)
+useStudioDialog(zoomDialog, exitHtmlZoom, computed(() => Boolean(htmlZoomId.value)))
 useStudioDialog(historyDialog, () => { historyOpen.value = false }, historyOpen)
 const draft = computed({ get: () => activeChat.value?.draft || '', set: value => { if (activeChat.value) activeChat.value.draft = value } })
 const backgroundChatId = computed(() => chatRunningIds.value.find(id => id !== chatActiveId.value) || '')
@@ -86,6 +100,26 @@ function renderMarkdown(text: string) {
 function toggleHtmlPreview(messageId: string) {
   htmlPreviewCreated.value[messageId] = true
   htmlPreview.value[messageId] = !htmlPreview.value[messageId]
+  // 隐藏预览回到代码视图前先退出放大,避免遗留覆盖层
+  if (!htmlPreview.value[messageId] && htmlZoomId.value === messageId) exitHtmlZoom()
+}
+function registerHtmlFrame(messageId: string, element: unknown) {
+  if (element instanceof HTMLElement) htmlFrames.set(messageId, element)
+  else htmlFrames.delete(messageId)
+}
+function toggleHtmlZoom(messageId: string, event?: Event) {
+  if (htmlZoomId.value === messageId) { exitHtmlZoom(); return }
+  zoomOrigin = (event?.currentTarget as HTMLElement) ?? null
+  htmlZoomId.value = messageId
+  // 把焦点交给覆盖层里的退出按钮,键盘用户不必穿过 iframe
+  void nextTick(() => document.querySelector<HTMLElement>('.chat-html-frame.is-zoomed .chat-html-exit')?.focus())
+}
+function exitHtmlZoom() {
+  if (!htmlZoomId.value) return
+  htmlZoomId.value = ''
+  const origin = zoomOrigin
+  zoomOrigin = null
+  void nextTick(() => origin?.focus())
 }
 function trackScroll() { const element = scroller.value; if (element) atBottom.value = element.scrollHeight - element.scrollTop - element.clientHeight < 90 }
 function scrollToBottom() { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight; atBottom.value = true }
@@ -103,6 +137,8 @@ async function copy(text: string) {
   } catch { app.showError(t('common.copyFailed')) }
   finally { element?.remove() }
 }
+// 切换对话时退出放大,避免覆盖层停留在另一段对话上
+watch(chatActiveId, () => { if (htmlZoomId.value) { htmlZoomId.value = ''; zoomOrigin = null } })
 onMounted(() => { void initStudioChat() })
 </script>
 <style scoped>
@@ -111,6 +147,7 @@ onMounted(() => { void initStudioChat() })
 .text-chat-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .text-chat-head { flex-shrink: 0; }
 .text-chat-history-toggle { display: none; }
+.text-chat-sidebar-toggle { display: inline-grid; }
 .text-chat-options { display: flex; align-items: flex-end; justify-content: center; gap: 10px; padding: 12px 24px 0; flex-shrink: 0; border-top: 1px solid var(--st-border); background: var(--st-panel); }
 .text-chat-options label { flex: 1; min-width: 0; max-width: 320px; }
 .text-chat-options select { width: 100%; font-size: 12px; min-width: 0; text-overflow: ellipsis; }
@@ -155,10 +192,15 @@ onMounted(() => { void initStudioChat() })
 .chat-markdown :deep(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin-bottom: 12px; }
 .chat-markdown :deep(td), .chat-markdown :deep(th) { border: 1px solid var(--st-border); padding: 6px 10px; }
 .chat-markdown :deep(h1), .chat-markdown :deep(h2), .chat-markdown :deep(h3) { font-weight: 700; margin: 16px 0 8px; }
-.chat-html-preview { display: block; width: 100%; min-height: 360px; margin-top: 12px; border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
+.chat-html-frame { position: relative; margin-top: 12px; }
+.chat-html-preview { display: block; width: 100%; min-height: 360px; border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
+/* 放大预览:组件内固定定位,不使用原生 Fullscreen API,iframe 不重建 */
+.chat-html-frame.is-zoomed { position: fixed; inset: 0; z-index: 120; margin: 0; padding: 48px 12px 12px; background: #020617e6; }
+.chat-html-frame.is-zoomed .chat-html-preview { height: 100%; min-height: 0; border-radius: 12px; }
+.chat-html-exit { position: absolute; top: 10px; right: 12px; z-index: 1; }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (max-width: 1023px) {
-  .text-chat-sidebar, .text-chat-desktop-mark { display: none; }
+  .text-chat-sidebar, .text-chat-desktop-mark, .text-chat-sidebar-toggle { display: none; }
   .text-chat-history-toggle { display: inline-grid; }
   .text-chat-options { padding: 10px 12px; gap: 8px; }
   .text-chat-messages { padding: 16px 12px; }
