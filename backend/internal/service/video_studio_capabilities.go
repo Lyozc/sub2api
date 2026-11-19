@@ -86,15 +86,22 @@ func VideoStudioCapabilities(model string) map[string]VideoCapabilities {
 // Only quote prices with a verified billing source. Do not invent a default
 // for models whose account-specific pricing is not exposed to the workbench.
 func VideoStudioUnitPrices(model string, group *Group) map[string]float64 {
-	if group == nil || !group.VideoRateIndependent {
+	if group == nil {
 		return nil
 	}
+	// Estimates follow the same multiplier selection as actual video billing.
+	// RateMultiplier may already contain the user's override, resolved by the caller.
+	multiplier := resolveVideoRateMultiplier(&APIKey{Group: group}, group.RateMultiplier)
 	prices := map[string]float64{}
 	for _, resolution := range []string{"480p", "720p", "1080p", "4k"} {
-		if price := group.GetVideoPriceForModel(model, resolution); price != nil {
-			prices[resolution] = *price * math.Max(0, group.VideoRateMultiplier)
+		price := LookupVideoModelPrice(group.VideoModelPrices, model, resolution)
+		if price == nil && resolution != VideoBillingResolution4K {
+			price = group.GetVideoPrice(resolution)
+		}
+		if price != nil {
+			prices[resolution] = *price * math.Max(0, multiplier)
 		} else if price, ok := getDefaultGrokImagineVideoPrice(model, resolution); ok {
-			prices[resolution] = price * math.Max(0, group.VideoRateMultiplier)
+			prices[resolution] = price * math.Max(0, multiplier)
 		}
 	}
 	return prices

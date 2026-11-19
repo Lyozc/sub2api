@@ -42,17 +42,22 @@ func (h *GatewayHandler) VideoStudioModels(c *gin.Context, apiKeyService *servic
 	}
 
 	type modelItem struct {
-		ID           string                               `json:"id"`
-		GroupID      int64                                `json:"group_id"`
-		GroupName    string                               `json:"group_name"`
-		Platform     string                               `json:"platform"`
-		Capabilities map[string]service.VideoCapabilities `json:"capabilities,omitempty"`
-		UnitPrices   map[string]float64                   `json:"unit_prices,omitempty"`
+		ID            string                               `json:"id"`
+		GroupID       int64                                `json:"group_id"`
+		GroupName     string                               `json:"group_name"`
+		Platform      string                               `json:"platform"`
+		Capabilities  map[string]service.VideoCapabilities `json:"capabilities,omitempty"`
+		UnitPrices    map[string]float64                   `json:"unit_prices,omitempty"`
+		ProUnitPrices map[string]float64                   `json:"pro_unit_prices,omitempty"`
 	}
 	out := make([]modelItem, 0)
 	seen := map[string]bool{}
 	for i := range groups {
 		g := &groups[i]
+		pricingGroup := *g
+		if !g.VideoRateIndependent {
+			pricingGroup.RateMultiplier = h.gatewayService.ResolveUserGroupRateMultiplier(c.Request.Context(), subject.UserID, g.ID, g.RateMultiplier)
+		}
 		ids := h.studioAvailableModels(c.Request.Context(), g)
 		if g.ModelAllowlistEnabled() {
 			ids = g.ModelAllowlist.FilterForListing(ids)
@@ -64,7 +69,11 @@ func (h *GatewayHandler) VideoStudioModels(c *gin.Context, apiKeyService *servic
 				continue
 			}
 			seen[key] = true
-			out = append(out, modelItem{ID: id, GroupID: g.ID, GroupName: g.Name, Platform: string(g.Platform), Capabilities: service.VideoStudioCapabilities(id), UnitPrices: service.VideoStudioUnitPrices(id, g)})
+			var proPrices map[string]float64
+			if g.Platform == service.PlatformKling {
+				proPrices = service.VideoStudioUnitPrices(id+"-pro", &pricingGroup)
+			}
+			out = append(out, modelItem{ID: id, GroupID: g.ID, GroupName: g.Name, Platform: string(g.Platform), Capabilities: service.VideoStudioCapabilities(id), UnitPrices: service.VideoStudioUnitPrices(id, &pricingGroup), ProUnitPrices: proPrices})
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": out})

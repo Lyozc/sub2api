@@ -279,9 +279,10 @@
         </section>
       </div>
       <footer class="creation-footer">
-        <p class="cost-estimate" data-testid="video-cost-estimate">
-          {{ preparingFirstFrame ? t('videoStudio.preparingFrame') : estimatedCost }}
-        </p>
+        <div class="cost-estimate" data-testid="video-cost-estimate" aria-live="polite">
+              <strong>{{ preparingFirstFrame ? t('videoStudio.preparingFrame') : estimatedCost }}</strong>
+              <small v-if="estimateBreakdown && !preparingFirstFrame" data-testid="video-cost-breakdown">{{ estimateBreakdown }}</small>
+            </div>
         <button class="generate-button" data-testid="video-send" type="submit" :disabled="!canSend">
           <span v-if="generating" class="button-spinner" aria-hidden="true"></span><Icon v-else name="sparkles" size="sm" aria-hidden="true" />{{
             generating ? t('videoStudio.batchGenerating') : t('videoStudio.generateN', { n: quantity })
@@ -611,17 +612,30 @@ const canPolish = computed(
 )
 const audioAllowed = computed(() => videoAudioAllowed(capabilities.value, selectedResolution.value)
   && !(mode.value === 'i2v' && hasKlingReferenceControls() && (activeKlingReferences().keepOriginalSound || capabilities.value.references?.disable_generated_audio_with_video && activeKlingReferences().media.some(item=>item.name.startsWith('video_')))))
-const estimatedCost = computed(() => {
-  if (!durationValid.value) return ''
-  if (mode.value === 'i2v' && hasKlingReferenceControls() && activeKlingReferences().media.some(item => item.name.startsWith('video_'))) return t('videoStudio.referenceCostPending')
+const estimatedUnitPrice = computed(() => {
   const option = models.value.find((o) => o.id === model.value && o.group_id === modelGroupId.value)
-  const price = option?.unit_prices?.[selectedResolution.value || capabilities.value.default_resolution]
-  return price == null
-    ? t('videoStudio.costUnavailable')
-    : t('videoStudio.estimatedCost', {
-        cost: (price * seconds.value * quantity.value).toFixed(4)
-      })
+  const isPro = option?.platform === 'kling' && capabilities.value.modes.includes(klingSettings.value.mode) && klingSettings.value.mode === 'pro'
+  const prices = isPro ? option?.pro_unit_prices : option?.unit_prices
+  const price = prices?.[selectedResolution.value || capabilities.value.default_resolution]
+  return typeof price === 'number' && Number.isFinite(price) && price >= 0 ? price : null
 })
+const hasBillableVideoReference = computed(() => mode.value === 'i2v' && hasKlingReferenceControls() && activeKlingReferences().media.some(item => item.name.startsWith('video_')))
+const estimatedCost = computed(() => {
+  if (!durationValid.value || !validVideoQuantity(quantity.value)) return ''
+  const price = estimatedUnitPrice.value
+  if (price == null) return t('videoStudio.costUnavailable')
+  return t(hasBillableVideoReference.value ? 'videoStudio.estimatedMinimumCost' : 'videoStudio.estimatedCost', {
+    cost: (price * seconds.value * quantity.value).toFixed(4)
+  })
+})
+const estimateBreakdown = computed(() => {
+  if (estimatedUnitPrice.value == null || !durationValid.value || !validVideoQuantity(quantity.value)) return ''
+  if (hasBillableVideoReference.value) return t('videoStudio.referenceCostPending')
+  return t('videoStudio.costBreakdown', {
+    price: estimatedUnitPrice.value.toFixed(4), seconds: seconds.value, count: quantity.value
+  })
+})
+
 const keyOptions = computed(() => aiKeys.value.map((key) => ({ value: key.id, label: key.name })))
 function setAIKey(value: ToolbarValue) {
   aiKeyId.value = value === null ? null : Number(value)
@@ -1382,6 +1396,8 @@ summary::-webkit-details-marker {
   background: var(--vs-panel);
   flex-shrink: 0;
 }
+.cost-estimate strong { display: block; font-weight: 600; color: var(--vs-accent-text); }
+.cost-estimate small { display: block; margin-top: 2px; font-size: 10px; font-weight: 400; color: var(--vs-muted); }
 .cost-estimate {
   color: var(--vs-secondary);
   font-size: 11px;

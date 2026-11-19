@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -153,6 +154,42 @@ func TestStudioModels_UnmappedAccountKeepsDefaultsAndAllowlist(t *testing.T) {
 				10: {{ID: 1, Platform: endpoint.accountPlatform}},
 			})
 			require.Equal(t, []studioModelForTest{{ID: endpoint.model, GroupID: 10, GroupName: "healthy", Platform: endpoint.groupPlatform}}, got)
+		})
+	}
+}
+
+func TestStudioModels_VideoQuotesConfiguredSharedAndIndependentPrices(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, independent := range []bool{false, true} {
+		t.Run(fmt.Sprint(independent), func(t *testing.T) {
+			group := studioGroupForTest(25, "Kling", service.PlatformKling)
+			group.RateMultiplier, group.VideoRateMultiplier, group.VideoRateIndependent = 2, 0.5, independent
+			group.VideoModelPrices = map[string]map[string]float64{"kling-v4": {"720p": 0.2}, "kling-v4-pro": {"720p": 0.4}}
+			h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+				25: {{ID: 1, Platform: service.PlatformKling, Credentials: map[string]any{"model_mapping": map[string]any{"kling-v4": "kling-v4"}}}},
+			}})
+			keys := service.NewAPIKeyService(nil, studioModelsUserRepoStub{}, studioModelsGroupRepoStub{groups: []service.Group{group}}, studioModelsSubscriptionRepoStub{}, nil, nil, nil)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodGet, "/studio/models", nil)
+			c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 7})
+			h.VideoStudioModels(c, keys)
+			require.Equal(t, http.StatusOK, rec.Code)
+			var response struct {
+				Data []struct {
+					ID     string             `json:"id"`
+					Prices map[string]float64 `json:"unit_prices"`
+					Pro    map[string]float64 `json:"pro_unit_prices"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			require.Len(t, response.Data, 1)
+			multiplier := 2.0
+			if independent {
+				multiplier = 0.5
+			}
+			require.InDelta(t, 0.2*multiplier, response.Data[0].Prices["720p"], 1e-9)
+			require.InDelta(t, 0.4*multiplier, response.Data[0].Pro["720p"], 1e-9)
 		})
 	}
 }

@@ -113,12 +113,18 @@ func TestVideoStudioFirstFrameValidation(t *testing.T) {
 	require.Error(t, ValidateVideoStudioRequest([]byte(`{"model":"kling-v4","duration":5,"prompt":"ocean","image":{"url":"data:image/png;base64,aW52YWxpZA=="}}`)))
 }
 
-func TestVideoStudioEstimateRequiresIndependentBilling(t *testing.T) {
+func TestVideoStudioEstimateUsesBillingMultiplier(t *testing.T) {
 	price := 0.1
 	group := &Group{RateMultiplier: 3, VideoPrice720P: &price, VideoRateIndependent: true, VideoRateMultiplier: 0.5}
 	require.InDelta(t, 0.05, VideoStudioUnitPrices("kling-v4", group)["720p"], 1e-9)
 	group.VideoRateIndependent = false
-	require.Empty(t, VideoStudioUnitPrices("kling-v4", group))
+	require.InDelta(t, 0.3, VideoStudioUnitPrices("kling-v4", group)["720p"], 1e-9)
+	// The caller resolves a user-specific rate before quoting the group.
+	group.RateMultiplier = 0.25
+	require.InDelta(t, 0.025, VideoStudioUnitPrices("kling-v4", group)["720p"], 1e-9)
+	group.RateMultiplier = -1
+	require.Zero(t, VideoStudioUnitPrices("kling-v4", group)["720p"])
+	require.Nil(t, VideoStudioUnitPrices("kling-v4", nil))
 }
 
 func TestVideoStudioKlingImageDoesNotInjectUnsupportedRatio(t *testing.T) {
@@ -128,4 +134,26 @@ func TestVideoStudioKlingImageDoesNotInjectUnsupportedRatio(t *testing.T) {
 	var request map[string]any
 	require.NoError(t, json.Unmarshal(body, &request))
 	require.NotContains(t, request, "aspect_ratio")
+}
+
+func TestVideoStudioEstimatesMatchConfiguredModelBilling(t *testing.T) {
+	flat, zero := 0.08, 0.0
+	group := &Group{RateMultiplier: 1.5, VideoPrice1080P: &flat, VideoModelPrices: map[string]map[string]float64{
+		"kling-v4": {"720p": 0.2}, "kling-v4-pro": {"720p": 0.3}, "kling-v4-flash": {"720p": zero},
+	}}
+	for _, tc := range []struct{ model, resolution string }{
+		{"kling-v4", "720p"}, {"kling-4.0", "720p"}, {"kling-v4-pro", "720p"},
+		{"kling-v4", "1080p"}, {"kling-v4-flash", "720p"}, {"grok-imagine-video", "720p"},
+	} {
+		t.Run(tc.model+tc.resolution, func(t *testing.T) {
+			price, ok := VideoStudioUnitPrices(tc.model, group)[tc.resolution]
+			require.True(t, ok)
+			actual := (&BillingService{}).CalculateVideoCost(tc.model, tc.resolution, 2, 10, group.VideoPriceConfig(), group.RateMultiplier)
+			require.InDelta(t, actual.ActualCost, price*10*2, 1e-9)
+		})
+	}
+	require.Empty(t, VideoStudioUnitPrices("unknown-model", &Group{RateMultiplier: 1}))
+	// A 480p fallback must not be presented as a configured 4K price.
+	quote := VideoStudioUnitPrices("kling-v4", &Group{RateMultiplier: 1, VideoPrice480P: &flat})
+	require.NotContains(t, quote, "4k")
 }

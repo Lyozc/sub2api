@@ -47,7 +47,7 @@ const SUBMISSION_RECEIPT_TIMEOUT_MS = 15000
 // ===== 类型 =====
 // 模型选项带所属分组:工作台密钥按分组各一把(多个 grok/composite 视频分组同台),
 // 生成时经 X-Video-Studio-Group 头路由到对应分组。
-export interface VideoModelOption { id: string; group_id: number; group_name: string; platform?: string; capabilities?: VideoCapabilitySet; unit_prices?: Record<string, number> }
+export interface VideoModelOption { id: string; group_id: number; group_name: string; platform?: string; capabilities?: VideoCapabilitySet; unit_prices?: Record<string, number>; pro_unit_prices?: Record<string, number> }
 
 function toOptions(ids: string[]): VideoModelOption[] {
   return ids.map(id => ({ id, group_id: 0, group_name: '' }))
