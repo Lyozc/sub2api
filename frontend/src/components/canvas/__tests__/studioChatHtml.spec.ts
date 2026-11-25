@@ -27,6 +27,15 @@ describe('studio chat HTML output', () => {
     expect(html.indexOf('<canvas')).toBeLessThan(html.indexOf('<script'))
   })
 
+  it('keeps reusable shapes and SMIL animation with local SVG targets', () => {
+    const html = studioChatHtmlDocument('<html><body><svg><defs><circle id="wheel" r="20"/></defs><use href="#wheel"/><use href="https://example.test/shape.svg#wheel"/><animate href="#wheel" attributeName="r" values="20;30;20" dur="2s" repeatCount="indefinite"/></svg></body></html>')
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+    const uses = parsed.querySelectorAll('use')
+    expect(uses[0].getAttribute('href')).toBe('#wheel')
+    expect(uses[1].hasAttribute('href')).toBe(false)
+    expect(parsed.querySelector('animate')?.getAttribute('repeatCount')).toBe('indefinite')
+  })
+
   it('removes policy overrides and remote scripts, and uses the parent nonce for inline code', () => {
     const trusted = document.createElement('script')
     trusted.nonce = 'parentNonce123'

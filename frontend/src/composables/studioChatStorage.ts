@@ -1,4 +1,5 @@
 import { StudioSessionChangedError } from './studioSession'
+import type { StudioChatAttachment } from './studioChatAttachments'
 
 export interface StudioChatMessage {
   id: string
@@ -9,6 +10,7 @@ export interface StudioChatMessage {
   startedAt?: number
   error?: string
   clientRequestId?: string
+  attachments?: StudioChatAttachment[]
 }
 export interface StudioChatConversation {
   id: string
@@ -17,6 +19,7 @@ export interface StudioChatConversation {
   updatedAt: number
   revision: number
   draft: string
+  draftAttachments?: StudioChatAttachment[]
   messages: StudioChatMessage[]
 }
 export class StudioChatConflictError extends Error {

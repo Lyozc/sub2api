@@ -124,7 +124,7 @@ func RegisterStudioAIRoutes(
 		ai.POST("/ai-prompt", bodyLimit, prepare, clientRequestID, opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
 			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
-		ai.POST("/chat", bodyLimit, prepareStudioChat(apiKeyService), clientRequestID, studioChatKeepalive(time.Duration(cfg.Gateway.StreamKeepaliveInterval)*time.Second), opsErrorLogger,
+		ai.POST("/chat", middleware.RequestBodyLimit(min(cfg.Gateway.MaxBodySize, studioChatWireBytes)), prepareStudioChat(apiKeyService), clientRequestID, studioChatKeepalive(time.Duration(cfg.Gateway.StreamKeepaliveInterval)*time.Second), opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
 			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
 	}

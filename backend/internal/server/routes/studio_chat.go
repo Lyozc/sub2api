@@ -3,11 +3,12 @@ package routes
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -23,25 +24,30 @@ func prepareStudioChat(keys *service.APIKeyService) gin.HandlerFunc {
 			return
 		}
 		var req struct {
-			KeyID    int64  `json:"key_id"`
-			Model    string `json:"model"`
-			Messages []struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			} `json:"messages"`
+			KeyID    int64               `json:"key_id"`
+			Model    string              `json:"model"`
+			Messages []studioChatMessage `json:"messages"`
 		}
-		if c.ShouldBindJSON(&req) != nil || req.KeyID <= 0 || strings.TrimSpace(req.Model) == "" || len(req.Model) > 256 || len(req.Messages) == 0 || len(req.Messages) > 200 {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Choose an API key and model, and provide 1–200 text messages"})
+		decoder := json.NewDecoder(c.Request.Body)
+		err := decoder.Decode(&req)
+		if err == nil {
+			// Consume trailing whitespace so a valid JSON prefix cannot bypass the wire limit.
+			_, err = decoder.Token()
+			switch err {
+			case io.EOF:
+				err = nil
+			case nil:
+				err = errors.New("invalid trailing input")
+			}
+		}
+		var sizeError *http.MaxBytesError
+		if errors.As(err, &sizeError) {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"message": "Chat request exceeds the size limit"})
 			return
 		}
-		total := 0
-		for index, message := range req.Messages {
-			length := utf8.RuneCountInString(message.Content)
-			total += length
-			if (message.Role != "user" && message.Role != "assistant" && (message.Role != "system" || index != 0)) || strings.TrimSpace(message.Content) == "" || length > 32000 || total > 200000 {
-				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid message role or text length"})
-				return
-			}
+		if err != nil || req.KeyID <= 0 || strings.TrimSpace(req.Model) == "" || len(req.Model) > 256 || len(req.Messages) == 0 || len(req.Messages) > 200 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Choose an API key and model, and provide 1–200 messages"})
+			return
 		}
 		if req.Messages[len(req.Messages)-1].Role != "user" {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "The last message must be a user message"})
@@ -56,18 +62,25 @@ func prepareStudioChat(keys *service.APIKeyService) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "The selected API key is unavailable"})
 			return
 		}
+		messages, err := studioChatGatewayMessages(req.Messages)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			return
+		}
 		model := strings.TrimSpace(req.Model)
-		chat := gin.H{"model": model, "messages": req.Messages, "stream": true}
+		chat := gin.H{"model": model, "messages": messages, "stream": true}
 		if effort := service.StudioChatReasoningEffort(model); effort != "" {
 			chat["reasoning_effort"] = effort
 		}
-		payload, err := json.Marshal(chat)
-		if err != nil {
+		var payload bytes.Buffer
+		encoder := json.NewEncoder(&payload)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(chat); err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid chat request"})
 			return
 		}
-		c.Request.Body = io.NopCloser(bytes.NewReader(payload))
-		c.Request.ContentLength = int64(len(payload))
+		c.Request.Body = pkghttputil.NewPrereadBody(payload.Bytes())
+		c.Request.ContentLength = int64(payload.Len())
 		originalPath := c.Request.URL.Path
 		c.Request.URL.Path = "/v1/chat/completions"
 		defer func() { c.Request.URL.Path = originalPath }()

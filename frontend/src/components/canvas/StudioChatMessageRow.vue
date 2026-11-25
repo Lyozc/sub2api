@@ -13,6 +13,7 @@
       {{ t('studioChat.thinking') }}
       <span role="timer" aria-live="off">{{ t('studioChat.waitingElapsed', { seconds: elapsedSeconds }) }}</span>
     </p>
+    <StudioChatAttachments v-if="!assistant && message.attachments?.length" :attachments="message.attachments" />
 
     <p v-if="message.status === 'stopped'" class="chat-message-note">{{ t('studioChat.stopped') }}</p>
     <template v-if="message.status === 'failed'">
@@ -36,6 +37,9 @@
       <button v-if="previewVisible && previewable" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="zoomed" @click="emit('toggleZoom', $event)">
         <Icon name="arrowsUpDown" size="xs" />{{ t(zoomed ? 'studioChat.exitHtmlZoom' : 'studioChat.zoomHtml') }}
       </button>
+      <button v-if="previewVisible && previewable" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="replayPreview">
+        <Icon name="refresh" size="xs" />{{ t('studioChat.replayHtml') }}
+      </button>
       <button v-if="retryable && last" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="retryDisabled" @click="emit('retry')">
         <Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}
       </button>
@@ -52,10 +56,15 @@
       :aria-label="zoomed ? t('studioChat.htmlPreview') : undefined"
       tabindex="-1"
     >
-      <button v-if="zoomed" type="button" class="studio-btn studio-btn--ghost studio-btn--sm chat-html-exit" @click="emit('exitZoom')">
-        <Icon name="x" size="xs" />{{ t('studioChat.exitHtmlZoom') }}
-      </button>
-      <iframe class="chat-html-preview" :srcdoc="previewDocument" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer" tabindex="0"></iframe>
+      <div v-if="zoomed" class="chat-html-fullscreen-tools">
+        <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm" @click="replayPreview">
+          <Icon name="refresh" size="xs" />{{ t('studioChat.replayHtml') }}
+        </button>
+        <button type="button" class="studio-btn studio-btn--ghost studio-btn--sm chat-html-exit" @click="emit('exitZoom')">
+          <Icon name="x" size="xs" />{{ t('studioChat.exitHtmlZoom') }}
+        </button>
+      </div>
+      <iframe :key="previewRun" class="chat-html-preview" :srcdoc="previewDocument" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer" tabindex="0"></iframe>
     </div>
   </article>
 </template>
@@ -66,6 +75,7 @@ import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import Icon from '@/components/icons/Icon.vue'
+import StudioChatAttachments from './StudioChatAttachments.vue'
 import type { StudioChatMessage } from '@/composables/studioChatStorage'
 import { studioChatHTTP2ErrorMessage } from '@/composables/studioChatStream'
 import { extractStudioChatHtml, studioChatHtmlDocument } from './studioChatHtml'
@@ -111,6 +121,8 @@ const markdown = computed(() => DOMPurify.sanitize(marked.parse(props.message.co
 }))
 const previewable = computed(() => assistant.value && !streaming.value && !!extractStudioChatHtml(props.message.content))
 const previewDocument = computed(() => studioChatHtmlDocument(props.message.content))
+const previewRun = ref(0)
+function replayPreview() { previewRun.value++ }
 </script>
 
 <style scoped>
@@ -141,11 +153,12 @@ const previewDocument = computed(() => studioChatHtmlDocument(props.message.cont
 .chat-markdown :deep(td), .chat-markdown :deep(th) { border: 1px solid var(--st-border); padding: 6px 10px; }
 .chat-markdown :deep(h1), .chat-markdown :deep(h2), .chat-markdown :deep(h3) { font-weight: 700; margin: 16px 0 8px; }
 .chat-html-frame { position: relative; margin-top: 12px; }
-.chat-html-preview { display: block; width: 100%; min-height: 360px; border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
+.chat-html-preview { display: block; width: 100%; height: clamp(24rem, 63dvh, 42rem); border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
 /* 放大预览:组件内固定定位,不使用原生 Fullscreen API,iframe 不重建 */
-.chat-html-frame.is-zoomed { position: fixed; inset: 0; z-index: 120; margin: 0; padding: 48px 12px 12px; background: #020617e6; }
-.chat-html-frame.is-zoomed .chat-html-preview { height: 100%; min-height: 0; border-radius: 12px; }
-.chat-html-exit { position: absolute; top: 10px; right: 12px; z-index: 1; }
+.chat-html-frame.is-zoomed { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 10px 12px 12px; background: var(--st-panel); }
+.chat-html-frame.is-zoomed .chat-html-preview { flex: 1; min-height: 0; height: auto; }
+.chat-html-fullscreen-tools { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 640px) { .chat-html-preview { height: clamp(18rem, 58dvh, 34rem); } }
 
 @keyframes pulse { 50% { opacity: .25; } }
 .chat-live-text { white-space: pre-wrap; }

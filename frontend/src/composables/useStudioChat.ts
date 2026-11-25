@@ -5,6 +5,7 @@ import { sessionOwnerKey, StudioSessionChangedError } from './studioSession'
 import { studioId } from './studioIdentity'
 import { readStudioChatResponse } from './studioChatStream'
 import { loadStudioChatHistory, saveStudioChatConversation, StudioChatConflictError, type StudioChatConversation, type StudioChatMessage } from './studioChatStorage'
+import { readStudioChatAttachment, studioChatAttachmentBytes, studioChatAttachmentLimit, studioChatAttachmentTotalBytes } from './studioChatAttachments'
 
 const t = i18n.global.t
 export const chatConversations = ref<StudioChatConversation[]>([])
@@ -18,6 +19,10 @@ export const chatOptionsError = ref('')
 export const chatStorageError = ref('')
 export const chatReady = ref(false)
 const runningConversationIds = ref<Set<string>>(new Set())
+const readingAttachments = ref(new Set<string>())
+const attachmentErrors = ref(new Map<string, string>())
+export const chatAttachmentsLoading = computed(() => readingAttachments.value.has(chatActiveId.value))
+export const chatAttachmentError = computed(() => attachmentErrors.value.get(chatActiveId.value) || '')
 /** True when at least one conversation is receiving a reply. */
 export const chatBusy = computed(() => runningConversationIds.value.size > 0)
 /** True when the currently selected conversation is receiving a reply. */
@@ -122,7 +127,7 @@ export function initStudioChat(): Promise<void> {
 }
 export function newChat() {
   if (!chatReady.value) return
-  const empty = chatConversations.value.find(row => !row.messages.length && !row.draft && !row.revision)
+  const empty = chatConversations.value.find(row => !row.messages.length && !row.draft && !row.draftAttachments?.length && !row.revision && !readingAttachments.value.has(row.id))
   if (empty) { chatActiveId.value = empty.id; return }
   const now = Date.now()
   const conversation: StudioChatConversation = { id: studioId(), title: '', createdAt: now, updatedAt: now, revision: 0, draft: '', messages: [] }
@@ -142,6 +147,7 @@ export async function deleteChat(id: string) {
   removed.add(id)
   if (!await persist(conversation, true)) { removed.delete(id); return }
   if (!state.current()) return
+  attachmentErrors.value.delete(id)
   chatConversations.value = chatConversations.value.filter(row => row.id !== id)
   if (chatActiveId.value === id) { chatActiveId.value = sortedChats.value[0]?.id || ''; if (!chatActiveId.value) newChat() }
 }
@@ -152,6 +158,47 @@ export async function renameChat(id: string, title: string) {
   await persist(conversation)
 }
 export async function saveChatDraft() { if (activeChat.value && chatReady.value && !chatStorageError.value) await persist(activeChat.value) }
+
+function attachmentBytes(conversation: StudioChatConversation) {
+  const attachments = conversation.messages.flatMap(message => message.attachments || []).concat(conversation.draftAttachments || [])
+  return attachments.reduce((total, attachment) => total + studioChatAttachmentBytes(attachment), 0)
+}
+
+export async function addChatAttachments(files: File[]) {
+  const conversation = activeChat.value
+  if (!files.length || !conversation || !chatReady.value || chatStorageError.value || isChatRunning(conversation.id) || readingAttachments.value.has(conversation.id)) return
+  const state = snapshot()
+  const id = conversation.id
+  attachmentErrors.value.delete(id)
+  if (files.length + (conversation.draftAttachments?.length ?? 0) > studioChatAttachmentLimit) {
+    attachmentErrors.value.set(id, t('studioChat.attachmentCount'))
+    return
+  }
+  if (attachmentBytes(conversation) + files.reduce((total, file) => total + file.size, 0) > studioChatAttachmentTotalBytes) {
+    attachmentErrors.value.set(id, t('studioChat.attachmentTotal'))
+    return
+  }
+  readingAttachments.value.add(id)
+  try {
+    const attachments = await Promise.all(files.map(readStudioChatAttachment))
+    if (!state.current() || removed.has(id)) return
+    conversation.draftAttachments = [...(conversation.draftAttachments || []), ...attachments]
+    await persist(conversation)
+  } catch (error) {
+    if (state.current() && !removed.has(id)) attachmentErrors.value.set(id, t(`studioChat.${errorMessage(error)}`))
+  } finally {
+    if (state.current()) readingAttachments.value.delete(id)
+  }
+}
+
+export async function removeChatAttachment(index: number) {
+  const conversation = activeChat.value
+  if (!conversation?.draftAttachments || readingAttachments.value.has(conversation.id) || isChatRunning(conversation.id)) return
+  conversation.draftAttachments.splice(index, 1)
+  attachmentErrors.value.delete(conversation.id)
+  await persist(conversation)
+}
+
 export async function retryChatSave() {
   const state = snapshot()
   if (!chatReady.value) { await reloadChatHistory(); return }
@@ -196,27 +243,33 @@ function watchChatActivity(controller: AbortController) {
 
 export async function sendChat(retry = false) {
   const conversation = activeChat.value, selected = chatKeys.value.find(key => key.id === chatKeyId.value)
-  if (!conversation || !chatReady.value || isChatRunning(conversation.id) || chatStorageError.value || chatOptionsLoading.value || !selected || !chatModels.value.includes(chatModel.value)) return
+  if (!conversation || !chatReady.value || isChatRunning(conversation.id) || readingAttachments.value.has(conversation.id) || chatStorageError.value || chatOptionsLoading.value || !selected || !chatModels.value.includes(chatModel.value)) return
   const state = snapshot(), model = chatModel.value
   const last = conversation.messages.at(-1)
   if (retry && (!last || last.role !== 'assistant' || !['failed', 'stopped'].includes(last.status))) return
   const prompt = conversation.draft.trim()
-  if (!retry && (!prompt || prompt.length > 32000)) return
-  const previous = retry ? conversation.messages.slice(0, -1) : [...conversation.messages]
-  const context = previous.filter(message => message.role === 'user' || message.status !== 'streaming' && Boolean(message.content))
-    .map(message => ({ role: message.role, content: message.content }))
-  if (!retry) context.push({ role: 'user', content: prompt })
+  const attachments = conversation.draftAttachments
+  if (!retry && ((!prompt && !attachments?.length) || prompt.length > 32000)) return
+  const history = retry ? conversation.messages.slice(0, -1) : [...conversation.messages, {
+    id: studioId(), role: 'user', content: prompt, status: 'done', attachments
+  } satisfies StudioChatMessage]
+  const context = history.filter(message => message.role === 'user' || message.status !== 'streaming' && Boolean(message.content))
+    .map(({ role, content, attachments }) => ({ role, content, attachments }))
   if (context.length > 200 || context.some(message => message.content.length > 32000) || context.reduce((sum, message) => sum + message.content.length, 0) > 200000) {
     chatOptionsError.value = t('studioChat.contextTooLong'); return
   }
   const reply: StudioChatMessage = { id: studioId(), role: 'assistant', content: '', status: 'streaming', model, startedAt: Date.now() }
-  conversation.messages = retry ? previous : [...previous, { id: studioId(), role: 'user', content: prompt, status: 'done' }]
+  conversation.messages = history
   conversation.messages.push(reply)
   // Use the reactive proxy for token updates after the plain object was inserted.
   const responseMessage = conversation.messages[conversation.messages.length - 1]
-  if (!conversation.title) conversation.title = prompt.slice(0, 48)
+  if (!retry && !conversation.title) conversation.title = (prompt || attachments?.[0]?.name || '').slice(0, 48)
   conversation.updatedAt = Date.now()
-  if (!retry) conversation.draft = ''
+  if (!retry) {
+    conversation.draft = ''
+    conversation.draftAttachments = undefined
+    attachmentErrors.value.delete(conversation.id)
+  }
   stoppedConversations.delete(conversation.id)
   chatOptionsError.value = ''
   const requestController = new AbortController()
@@ -286,6 +339,7 @@ export function resetStudioChat() {
   chatConversations.value = []; chatActiveId.value = ''; chatKeys.value = []; chatKeyId.value = null
   chatModels.value = []; chatModel.value = ''; runningConversationIds.value = new Set(); chatReady.value = false
   chatOptionsLoading.value = false; chatOptionsError.value = ''; chatStorageError.value = ''
+  readingAttachments.value.clear(); attachmentErrors.value.clear()
   owner = ''; removed.clear(); stoppedConversations.clear(); persistence = Promise.resolve()
 }
 window.addEventListener('studio-session-ended', resetStudioChat)

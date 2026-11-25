@@ -64,8 +64,19 @@
             <button type="button" class="studio-icon-btn chat-refresh" :disabled="chatOptionsLoading" :aria-label="t('studioChat.refresh')" :title="t('studioChat.refresh')" @click="refreshChatOptions"><Icon name="refresh" size="xs" /></button>
           </div>
           <form class="chat-input-box" @submit.prevent="sendChat()">
-            <textarea ref="input" v-model="draft" rows="1" maxlength="32000" data-testid="chat-input" :aria-label="t('studioChat.input')" :placeholder="t('studioChat.placeholder')" :disabled="!chatReady" @blur="saveChatDraft" @keydown="onKeydown"></textarea>
-            <div class="chat-composer-bottom"><span>{{ t('studioChat.shortcut') }}</span><button v-if="chatActiveBusy" type="button" class="chat-submit is-stop" data-testid="chat-stop" :aria-label="t('studioChat.stop')" :title="t('studioChat.stop')" @click="stopChat()"><span class="chat-stop-icon" aria-hidden="true"></span></button><button v-else type="submit" class="chat-submit" data-testid="chat-send" :aria-label="t('studioChat.send')" :title="t('studioChat.send')" :disabled="!canSend"><Icon name="arrowUp" size="md" /></button></div>
+            <input ref="attachmentInput" type="file" multiple hidden data-testid="chat-attachment-input" :accept="studioChatAttachmentAccept" @change="pickAttachments" />
+            <StudioChatAttachments v-if="activeChat?.draftAttachments?.length" :attachments="activeChat.draftAttachments" :disabled="!canAttach" editable @remove="removeChatAttachment" />
+            <p v-if="chatAttachmentError" class="chat-attachment-error" role="alert">{{ chatAttachmentError }}</p>
+            <p v-else-if="chatAttachmentsLoading" class="studio-note" role="status">{{ t('studioChat.readingAttachments') }}</p>
+            <textarea ref="input" v-model="draft" rows="1" maxlength="32000" data-testid="chat-input" :aria-label="t('studioChat.input')" :placeholder="t('studioChat.placeholder')" :disabled="!chatReady" @blur="saveChatDraft" @keydown="onKeydown" @paste="pasteAttachments"></textarea>
+            <div class="chat-composer-bottom">
+              <div class="chat-composer-tools">
+                <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm chat-attach" data-testid="chat-attach" :aria-label="t('studioChat.addAttachments')" :title="t('studioChat.attachmentHint')" :disabled="!canAttach" @click="attachmentInput?.click()"><Icon name="upload" size="xs" />{{ t('studioChat.addAttachments') }}</button>
+                <span class="chat-shortcut">{{ t('studioChat.shortcut') }}</span>
+              </div>
+              <button v-if="chatActiveBusy" type="button" class="chat-submit is-stop" data-testid="chat-stop" :aria-label="t('studioChat.stop')" :title="t('studioChat.stop')" @click="stopChat()"><span class="chat-stop-icon" aria-hidden="true"></span></button>
+              <button v-else type="submit" class="chat-submit" data-testid="chat-send" :aria-label="t('studioChat.send')" :title="t('studioChat.send')" :disabled="!canSend"><Icon name="arrowUp" size="md" /></button>
+            </div>
           </form>
           <p class="chat-composer-note">{{ t('studioChat.billingNote') }}</p>
         </div>
@@ -81,12 +92,15 @@ import Icon from '@/components/icons/Icon.vue'
 import StudioPromptSuggestions from './StudioPromptSuggestions.vue'
 import StudioChatHistory from './StudioChatHistory.vue'
 import StudioChatMessageRow from './StudioChatMessageRow.vue'
+import StudioChatAttachments from './StudioChatAttachments.vue'
 import { useAppStore } from '@/stores/app'
 import { useStudioDialog } from '@/composables/useStudioDialog'
-import { activeChat, chatActiveBusy, chatActiveId, chatBusy, chatKeyId, chatKeys, chatModel, chatModels, chatOptionsError, chatOptionsLoading, chatReady, chatRunningIds, chatStorageError, initStudioChat, newChat, refreshChatOptions, reloadChatHistory, retryChatSave, saveChatDraft, selectChat, selectChatKey, selectChatModel, sendChat, stopChat } from '@/composables/useStudioChat'
+import { studioChatAttachmentAccept } from '@/composables/studioChatAttachments'
+import { activeChat, addChatAttachments, chatActiveBusy, chatActiveId, chatAttachmentError, chatAttachmentsLoading, chatBusy, chatKeyId, chatKeys, chatModel, chatModels, chatOptionsError, chatOptionsLoading, chatReady, chatRunningIds, chatStorageError, initStudioChat, newChat, refreshChatOptions, reloadChatHistory, removeChatAttachment, retryChatSave, saveChatDraft, selectChat, selectChatKey, selectChatModel, sendChat, stopChat } from '@/composables/useStudioChat'
 import './studio-shell.css'
 const { t } = useI18n(), app = useAppStore()
 const scroller = ref<HTMLElement>(), input = ref<HTMLTextAreaElement>(), atBottom = ref(true), historyOpen = ref(false), historyDialog = ref<HTMLElement>(), copied = ref('')
+const attachmentInput = ref<HTMLInputElement>()
 const htmlPreview = ref<Record<string, boolean>>({})
 const htmlPreviewCreated = ref<Record<string, boolean>>({})
 /** 放大预览的消息 id;放大只改样式,iframe 不重建,sandbox/srcdoc 保持不变 */
@@ -99,7 +113,22 @@ useStudioDialog(zoomDialog, exitHtmlZoom, computed(() => Boolean(htmlZoomId.valu
 useStudioDialog(historyDialog, () => { historyOpen.value = false }, historyOpen)
 const draft = computed({ get: () => activeChat.value?.draft || '', set: value => { if (activeChat.value) activeChat.value.draft = value } })
 const backgroundChatId = computed(() => chatRunningIds.value.find(id => id !== chatActiveId.value) || '')
-const canSend = computed(() => chatReady.value && !chatActiveBusy.value && !chatOptionsLoading.value && !chatStorageError.value && !!chatKeyId.value && chatModels.value.includes(chatModel.value) && !!draft.value.trim())
+const canAttach = computed(() => chatReady.value && !chatActiveBusy.value && !chatAttachmentsLoading.value && !chatStorageError.value)
+const canSend = computed(() => canAttach.value && !chatOptionsLoading.value && !!chatKeyId.value && chatModels.value.includes(chatModel.value) && Boolean(draft.value.trim() || activeChat.value?.draftAttachments?.length))
+function pickAttachments(event: Event) {
+  const picker = event.target as HTMLInputElement
+  const files = Array.from(picker.files || [])
+  picker.value = ''
+  void addChatAttachments(files)
+}
+function pasteAttachments(event: ClipboardEvent) {
+  const clipboard = event.clipboardData
+  if (!clipboard || !canAttach.value) return
+  const files = Array.from(clipboard.files)
+  if (!files.length) return
+  if (!clipboard.types.includes('text/plain')) event.preventDefault()
+  void addChatAttachments(files)
+}
 function toggleHtmlPreview(messageId: string) {
   htmlPreviewCreated.value[messageId] = true
   htmlPreview.value[messageId] = !htmlPreview.value[messageId]
@@ -206,8 +235,11 @@ onUnmounted(() => messageResize?.disconnect())
 .chat-input-box { padding: 12px; border: 1px solid var(--st-border); border-radius: 24px; background: var(--st-panel); box-shadow: 0 10px 28px -16px #10182840; }
 .chat-input-box:focus-within { border-color: var(--st-accent); }
 .chat-input-box textarea { display: block; resize: none; width: 100%; min-height: 44px; max-height: 136px; padding: 4px 6px; border: 0; outline: 0; background: transparent; color: var(--st-text); font-size: 15px; line-height: 1.5; }
-.chat-composer-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
-.chat-composer-bottom > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-muted); font-size: 11px; padding: 0 6px 10px; }
+.chat-composer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-composer-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-attach { flex-shrink: 0; min-height: 36px; }
+.chat-shortcut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-muted); font-size: 11px; }
+.chat-attachment-error { margin: 4px 6px; color: var(--st-danger); font-size: 12px; }
 .chat-submit { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--st-accent); color: var(--st-accent-on); transition: background-color .15s ease; }
 .chat-submit:hover:enabled { background: var(--st-accent-hover); }
 .chat-submit:disabled { cursor: not-allowed; border: 1px solid var(--st-border); background: var(--st-surface); color: var(--st-muted); }
@@ -231,7 +263,8 @@ onUnmounted(() => messageResize?.disconnect())
   .chat-option > span { display: none; }
   .chat-model-option { max-width: none; }
   .chat-input-box textarea { font-size: 16px; }
-  .chat-composer-bottom > span { font-size: 10px; }
+  .chat-attach { min-height: 44px; }
+  .chat-shortcut { display: none; }
 }
 @media (max-height: 700px) { .chat-composer-note { display: none; } }
 
