@@ -36,6 +36,22 @@ describe('studio chat HTML output', () => {
     expect(parsed.querySelector('animate')?.getAttribute('repeatCount')).toBe('indefinite')
   })
 
+  it('keeps a generated SVG head addressable by scripts and retains transform animation settings', () => {
+    const html = studioChatHtmlDocument(`<html><body><svg>
+      <g id="head"><circle r="20"/></g><use href="#head"/>
+      <animateTransform href="#head" attributeName="transform" type="rotate" from="0 20 30" to="90 20 30" calcMode="linear" dur="2s"/>
+      <animateMotion dur="2s" calcMode="linear" keyPoints="0;1" keyTimes="0;1"><mpath href="#route"/></animateMotion>
+    </svg><script>document.getElementById('head').setAttribute('transform', 'translate(40 60)')</script></body></html>`)
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+    expect(parsed.getElementById('head')?.localName).toBe('g')
+    expect(parsed.querySelector('use')?.getAttribute('href')).toBe('#head')
+    const rotation = parsed.querySelector('animateTransform')
+    expect(rotation?.getAttribute('from')).toBe('0 20 30')
+    expect(rotation?.getAttribute('to')).toBe('90 20 30')
+    expect(rotation?.getAttribute('calcMode')).toBe('linear')
+    expect(parsed.querySelector('animateMotion')?.getAttribute('keyPoints')).toBe('0;1')
+  })
+
   it('removes policy overrides and remote scripts, and uses the parent nonce for inline code', () => {
     const trusted = document.createElement('script')
     trusted.nonce = 'parentNonce123'

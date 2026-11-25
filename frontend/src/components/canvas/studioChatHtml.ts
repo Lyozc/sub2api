@@ -1,8 +1,8 @@
 import DOMPurify from 'dompurify'
 
-// These SVG elements are safe to render inside the same isolated frame as
-// animation scripts. Restrict reuse and animation targets to local fragments.
-const animatedSvgTags = ['use', 'animate', 'set']
+const svgAnimationTags = ['animate', 'animatecolor', 'animatemotion', 'animatetransform', 'set']
+const svgAnimationAttributes = ['from', 'to', 'by', 'calcmode', 'keypoints']
+const svgLocalReferenceElements = 'svg :is(use, animate, animateMotion, animateTransform, animateColor, set, mpath)'
 const fragmentReference = /^#[^\s]+$/
 const fitPreview = `
 (() => {
@@ -47,13 +47,17 @@ export function studioChatHtmlDocument(text: string): string {
   parsed.querySelectorAll('script[src]').forEach(script => script.remove())
   const sanitized = DOMPurify.sanitize(parsed.documentElement.outerHTML, {
     WHOLE_DOCUMENT: true,
-    ADD_TAGS: ['script', ...animatedSvgTags],
+    ADD_TAGS: ['script', 'use', ...svgAnimationTags],
+    ADD_ATTR: (attribute, tag) => svgAnimationTags.includes(tag) && svgAnimationAttributes.includes(attribute),
+    // The preview is an opaque-origin document. Preserve IDs such as "head":
+    // SVG fragment references, selectors and animation scripts rely on them.
+    SANITIZE_DOM: false,
     FORBID_TAGS: ['base', 'embed', 'form', 'iframe', 'link', 'meta', 'object'],
     FORBID_ATTR: ['srcdoc'],
     ALLOW_DATA_ATTR: true
   })
   const preview = new DOMParser().parseFromString(sanitized, 'text/html')
-  for (const element of preview.querySelectorAll('svg :is(use, animate, animateMotion, animateTransform, animateColor, set, mpath)')) {
+  for (const element of preview.querySelectorAll(svgLocalReferenceElements)) {
     for (const attribute of ['href', 'xlink:href']) {
       const target = element.getAttribute(attribute)
       if (target && !fragmentReference.test(target)) element.removeAttribute(attribute)
