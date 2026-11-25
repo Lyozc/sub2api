@@ -38,6 +38,7 @@ const props = withDefaults(
     ratios: readonly RatioOption[]
     ratio: string
     quantity: number
+    maxQuantity?: number
     labels: ControlLabels
   }>(),
   { durationStep: 1 }
@@ -63,7 +64,7 @@ const ids = {
   output: `${uid}-output`,
 }
 
-const quantityOptions = [1, 2, 3, 4] as const
+const quantityOptions = computed(() => [1, 2, 3, 4].filter(value => value <= (props.maxQuantity ?? 4)))
 
 /* ---------- Duration ---------- */
 

@@ -173,7 +173,7 @@ func TestStudioModels_VideoQuotesConfiguredSharedAndIndependentPrices(t *testing
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodGet, "/studio/models", nil)
 			c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 7})
-			h.VideoStudioModels(c, keys)
+			h.VideoStudioModels(c, keys, nil)
 			require.Equal(t, http.StatusOK, rec.Code)
 			var response struct {
 				Data []struct {

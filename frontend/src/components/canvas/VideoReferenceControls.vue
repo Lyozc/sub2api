@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { klingReferences, klingSettings, model, preparingFirstFrame, activeKlingReferences, klingReferenceCapabilities, addKlingReferenceFiles, addKlingReferenceURL, removeKlingReference, moveKlingKeyframe } from '@/composables/useVideoStudioEngine'
-import { referenceImageLimit, validateVideoReferences } from '@/composables/videoReferences'
+import { klingReferences, klingSettings, model, preparingFirstFrame, klingReferenceCapabilities, addKlingReferenceFiles, addKlingReferenceURL, removeKlingReference, moveKlingKeyframe, usesDreaminaVideo, dreaminaAssetAccept, selectedReferenceError } from '@/composables/useVideoStudioEngine'
+import { referenceImageLimit } from '@/composables/videoReferences'
 const { t } = useI18n()
+const referenceExample = '{{ref:1}}'
 const emit = defineEmits<{ pick: [] }>()
 const url = ref('')
 const kind = ref<'image' | 'video' | 'audio' | 'input' | 'tail_image' | 'keyframe'>('input')
@@ -14,7 +15,7 @@ const entries = computed(() => klingReferences.value.mode === 'frames' ? klingRe
 const media = computed(() => klingReferences.value.mode === 'reference' ? klingReferences.value.media : [])
 const hasReferenceVideo = computed(() => media.value.some(item => limits.value?.video_slots.includes(item.name)))
 const canKeepOriginalSound = computed(() => Boolean(limits.value?.keep_original_sound && hasReferenceVideo.value))
-const error = computed(() => validateVideoReferences(activeKlingReferences(), limits.value, klingSettings.value.sound))
+const error = computed(() => selectedReferenceError(undefined, caps.value))
 const options = computed(() => {
   const value = limits.value
   if (!value) return []
@@ -55,7 +56,7 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
   <section class="reference-controls" data-testid="video-references">
     <label for="video-reference-mode">{{ t('videoStudio.referenceMode') }}</label>
     <select id="video-reference-mode" v-model="klingReferences.mode" data-testid="video-reference-mode" :disabled="preparingFirstFrame">
-      <option value="frames" :disabled="!allCaps.frames.references">{{ t('videoStudio.referenceFrames') }}</option>
+      <option value="frames" :disabled="!allCaps.frames.references">{{ t(usesDreaminaVideo ? 'videoStudio.dreaminaFrames' : 'videoStudio.referenceFrames') }}</option>
       <option value="reference" :disabled="!allCaps.reference.references">{{ t('videoStudio.referenceOmni') }}</option>
     </select>
     <button type="button" @click="emit('pick')">{{ t('videoStudio.materials') }}</button>
@@ -78,7 +79,7 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
     </div>
     <ul v-if="media.length" class="reference-media-list">
       <li v-for="item in media" :key="item.name" :data-slot="item.name">
-        <div><strong>{{ label(item.name) }}</strong><span :title="item.url">{{ item.url }}</span></div>
+        <div><strong>{{ label(item.name) }}</strong><span :title="item.file?.name || item.url">{{ item.file?.name || item.url }}</span></div>
         <button type="button" :aria-label="t('videoStudio.removeReference', { name: label(item.name) })" :disabled="preparingFirstFrame" @click="removeKlingReference(item.name)">×</button>
       </li>
     </ul>
@@ -87,12 +88,12 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
       <select id="video-reference-kind" v-model="kind" data-testid="video-reference-kind" :disabled="preparingFirstFrame || !options.length">
         <option v-for="option in options" :key="option.value" :value="option.value">{{ t(`videoStudio.${option.label}`) }}</option>
       </select>
-      <label v-if="!['video', 'audio'].includes(kind) && options.length" class="reference-upload">
-        {{ t('videoStudio.uploadReferences') }}
-        <input type="file" accept="image/png,image/jpeg,image/webp" :multiple="kind === 'image' || kind === 'keyframe'" :disabled="preparingFirstFrame" :aria-label="t('videoStudio.uploadReferences')" @change="upload" />
+      <label v-if="(usesDreaminaVideo || !['video', 'audio'].includes(kind)) && options.length" class="reference-upload">
+        {{ t(usesDreaminaVideo ? 'videoStudio.dreaminaUploadReference' : 'videoStudio.uploadReferences') }}
+        <input type="file" :accept="usesDreaminaVideo ? dreaminaAssetAccept(kind) : 'image/png,image/jpeg,image/webp'" :multiple="kind !== 'input' && kind !== 'tail_image'" :disabled="preparingFirstFrame" :aria-label="t(usesDreaminaVideo ? 'videoStudio.dreaminaUploadReference' : 'videoStudio.uploadReferences')" @change="upload" />
       </label>
-      <label for="video-reference-url">{{ t('videoStudio.referenceURL') }}</label>
-      <div class="reference-url-row">
+      <label v-if="!usesDreaminaVideo" for="video-reference-url">{{ t('videoStudio.referenceURL') }}</label>
+      <div v-if="!usesDreaminaVideo" class="reference-url-row">
         <input id="video-reference-url" v-model="url" type="url" placeholder="https://…" :disabled="preparingFirstFrame || !options.length" @keydown.enter.prevent="addURL" />
         <button type="button" :disabled="!url.trim() || preparingFirstFrame || !options.length" @click="addURL">{{ t('videoStudio.addReference') }}</button>
       </div>
@@ -106,8 +107,10 @@ function addURL() { if (addKlingReferenceURL(url.value, kind.value)) url.value =
     <label v-if="limits?.prefer_multi_shots && klingReferences.mode === 'reference'" class="reference-check">
       <input v-model="klingReferences.preferMultiShots" type="checkbox" :disabled="limits.multi_shots_required" />{{ t('videoStudio.preferMultiShots') }}
     </label>
-    <p class="reference-hint">{{ t('videoStudio.referenceCombinationHint') }}</p>
-    <p v-if="media.some(item => item.name.startsWith('video_'))" class="reference-hint">{{ t('videoStudio.referenceVideoBilling') }}</p>
+    <p class="reference-hint">
+      {{ t(usesDreaminaVideo ? (klingReferences.mode === 'reference' ? 'videoStudio.dreaminaReferenceOrder' : 'videoStudio.dreaminaFrameRatio') : 'videoStudio.referenceCombinationHint', { example: referenceExample }) }}
+    </p>
+    <p v-if="!usesDreaminaVideo && media.some(item => item.name.startsWith('video_'))" class="reference-hint">{{ t('videoStudio.referenceVideoBilling') }}</p>
   </section>
 </template>
 

@@ -11,6 +11,19 @@
         @loadedmetadata="onMetadata"
         :style="{ aspectRatio: playerAspect }"
       ></video>
+      <div v-else-if="task.status === 'awaiting_approval'" class="result-state" role="status">
+        <Icon name="clock" size="lg" />
+        <strong>{{ t('videoStudio.dreaminaAwaitingApproval') }}</strong>
+        <p v-if="task.dreaminaQuoteCredits !== undefined">{{ t('videoStudio.dreaminaQuotedCredits', { count: task.dreaminaQuoteCredits }) }}</p>
+        <p v-if="task.dreaminaPriceEstimate !== undefined">{{ t('videoStudio.estimatedCost', { cost: task.dreaminaPriceEstimate.toFixed(4) }) }}</p>
+        <p v-else>{{ t('videoStudio.dreaminaPriceRequired') }}</p>
+        <p v-if="task.error" class="task-error">{{ task.error }}</p>
+        <button
+          type="button" data-testid="dreamina-approve" class="action primary"
+          :disabled="task.dreaminaQuoteCredits === undefined || task.dreaminaPriceEstimate === undefined"
+          @click="approveDreaminaVideo(task.taskId)"
+        >{{ t('videoStudio.dreaminaApprove') }}</button>
+      </div>
       <div v-else-if="task.status === 'failed'" class="result-state failed" role="status">
         <Icon name="exclamationCircle" size="lg" /><strong>{{
           task.submissionUnconfirmed
@@ -22,7 +35,7 @@
                 : t('videoStudio.taskPaused')
         }}</strong>
         <p class="task-error">{{ task.error || t('videoStudio.generateFailed') }}</p>
-        <p v-if="task.upstreamDone">
+        <p v-if="task.upstreamDone && !task.dreaminaContentUnavailable">
           {{ t('videoStudio.downloadFailedRetry') }}
         </p>
         <button type="button" class="action primary" @click="retryTask(task.taskId)">
@@ -62,7 +75,7 @@
           ></span
         ><time :datetime="new Date(task.submittedAt).toISOString()">{{ timeLabel }}</time>
       </div>
-      <p v-if="task.references" class="reference-task-note">{{ t(task.references.mode === 'frames' ? 'videoStudio.referenceFrames' : 'videoStudio.referenceOmni') }} · {{ t('videoStudio.referenceTaskSummary', { images: task.references.images.length, media: task.references.media.length }) }}</p>
+      <p v-if="task.references" class="reference-task-note">{{ t(task.references.mode === 'frames' ? (task.provider === 'dreamina' ? 'videoStudio.dreaminaFrames' : 'videoStudio.referenceFrames') : 'videoStudio.referenceOmni') }} · {{ t('videoStudio.referenceTaskSummary', { images: task.references.images.length, media: task.references.media.length }) }}</p>
       <p v-if="task.billingNote" class="reference-task-note">{{ task.billingNote }}</p>
       <div class="card-actions">
         <button type="button" class="action" @click="emit('reuse', task)">
@@ -73,7 +86,7 @@
           :download="`video-${task.remoteId || task.taskId}.mp4`"
           class="action"
           ><Icon name="download" size="xs" />{{ t('imageStudio.download') }}</a
-        ><button v-if="task.status === 'failed'" type="button" class="action" @click="archiveVideoTask(task)">
+        ><button v-if="task.status === 'failed' || task.status === 'awaiting_approval'" type="button" class="action" @click="archiveVideoTask(task)">
           <Icon name="inbox" size="xs" />{{ t('videoStudio.archive') }}
         </button>
       </div>
@@ -86,7 +99,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { videoAspectRatio, videoCapabilities } from '@/composables/videoModelCapabilities'
-import { retryTask, stopWaiting, archiveVideoTask, recordVideoMetadata, type VideoTask } from '@/composables/useVideoStudioEngine'
+import { approveDreaminaVideo, retryTask, stopWaiting, archiveVideoTask, recordVideoMetadata, type VideoTask } from '@/composables/useVideoStudioEngine'
 
 const props = defineProps<{ task: VideoTask; now: number }>()
 const emit = defineEmits<{ reuse: [task: VideoTask] }>()
@@ -144,8 +157,10 @@ const timeLabel = computed(() =>
     minute: '2-digit'
   })
 )
-const statusLabel = computed(() =>
-  t(
+const statusLabel = computed(() => {
+  if (props.task.status === 'awaiting_approval') return t('videoStudio.dreaminaAwaitingApproval')
+  if (props.task.provider === 'dreamina' && props.task.status === 'pending' && !props.task.remoteId) return t('videoStudio.dreaminaFetchingQuote')
+  return t(
     props.task.status === 'done'
       ? 'videoStudio.completed'
       : props.task.status === 'failed'
@@ -158,9 +173,10 @@ const statusLabel = computed(() =>
               ? 'videoStudio.processing'
               : 'videoStudio.queued'
   )
-)
-const retryLabel = computed(() =>
-  t(
+})
+const retryLabel = computed(() => {
+  if (props.task.provider === 'dreamina' && (!props.task.remoteId || props.task.upstreamFailed)) return t('videoStudio.dreaminaGetQuote')
+  return t(
     props.task.submissionUnconfirmed
       ? 'videoStudio.checkSubmission'
       : props.task.upstreamDone
@@ -169,7 +185,7 @@ const retryLabel = computed(() =>
           ? 'videoStudio.resumeTask'
           : 'videoStudio.regenerate'
   )
-)
+})
 </script>
 
 <style scoped>

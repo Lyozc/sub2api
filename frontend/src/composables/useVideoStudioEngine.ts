@@ -12,7 +12,7 @@ import { useAppStore } from '@/stores/app'
 import { sessionOwnerKey, StudioSessionChangedError } from './studioSession'
 import { isGrokImageModel } from './studioModels'
 import { openStudioHistoryDb } from './studioHistory'
-import { GROK_VIDEO_RESOLUTIONS, videoCapabilities, videoDurationAllowed, videoAspectRatio, videoAudioAllowed, type VideoCapabilitySet } from './videoModelCapabilities'
+import { GROK_VIDEO_RESOLUTIONS, videoCapabilities, videoDurationAllowed, videoAspectRatio, videoAudioAllowed, type VideoCapabilities, type VideoCapabilitySet } from './videoModelCapabilities'
 import { prepareVideoFirstFrame, VideoFrameError } from './videoFirstFrame'
 
 import { emptyVideoReferences, copyVideoReferences, validateVideoReferences, publicReferenceURL, type VideoReferenceAsset, type VideoReferences } from './videoReferences'
@@ -43,11 +43,13 @@ const POLL_TIMEOUT_MS = 45 * 60 * 1000
 const MAX_POLL_ERRORS = 3
 const SUBMISSION_RECOVERY_TIMEOUT_MS = 5 * 60 * 1000
 const SUBMISSION_RECEIPT_TIMEOUT_MS = 15000
+const DREAMINA_PATH = '/api/v1/video-studio/dreamina'
+const DREAMINA_REQUEST_TIMEOUT_MS = 200000
 
 // ===== 类型 =====
 // 模型选项带所属分组:工作台密钥按分组各一把(多个 grok/composite 视频分组同台),
 // 生成时经 X-Video-Studio-Group 头路由到对应分组。
-export interface VideoModelOption { id: string; group_id: number; group_name: string; platform?: string; capabilities?: VideoCapabilitySet; unit_prices?: Record<string, number>; pro_unit_prices?: Record<string, number> }
+export interface VideoModelOption { id: string; group_id: number; group_name: string; platform?: string; provider?: 'dreamina'; capabilities?: VideoCapabilitySet; unit_prices?: Record<string, number>; pro_unit_prices?: Record<string, number> }
 
 function toOptions(ids: string[]): VideoModelOption[] {
   return ids.map(id => ({ id, group_id: 0, group_name: '' }))
@@ -82,9 +84,14 @@ export interface VideoTask {
   actualDuration?: number
   actualWidth?: number
   actualHeight?: number
-  status: 'pending' | 'processing' | 'done' | 'failed'
+  status: 'pending' | 'processing' | 'awaiting_approval' | 'done' | 'failed'
   prompt: string
   model: string
+  provider?: VideoModelOption['provider']
+  dreaminaQuoteCredits?: number
+  dreaminaPriceEstimate?: number
+  dreaminaAssetIds?: string[]
+  dreaminaContentUnavailable?: boolean
   seconds: number
   resolution: string
   klingSettings?: KlingVideoSettings
@@ -112,6 +119,7 @@ export interface VideoHistoryItem {
   id: number
   ts: number
   model: string
+  provider?: VideoModelOption['provider']
   prompt: string
   seconds: number
   resolution: string
@@ -146,12 +154,13 @@ export const prompt = ref('')
 export const refImages = ref<RefImage[]>([])
 export const klingReferences = ref(emptyVideoReferences())
 function selectedOption() { return models.value.find(o => o.id === model.value && (modelGroupId.value == null || o.group_id === modelGroupId.value)) }
+export const usesDreaminaVideo = computed(() => selectedOption()?.provider === 'dreamina')
 export function klingReferenceCapabilities() {
   const supplied = selectedOption()?.capabilities
   return { frames: videoCapabilities(model.value,'i2v',supplied), reference: videoCapabilities(model.value,'reference',supplied) }
 }
 export function hasKlingReferenceControls() {
-  if (!/^kling/i.test(model.value)) return false
+  if (!/^kling/i.test(model.value) && !usesDreaminaVideo.value) return false
   const caps = klingReferenceCapabilities()
   return !!(caps.frames.references || caps.reference.references)
 }
@@ -161,10 +170,30 @@ export function activeKlingReferences(): VideoReferences {
   return {
     mode: draft.mode,
     images: (draft.mode === 'frames' ? draft.frames : draft.images).map(item => ({ name: item.name, url: item.file ? '' : item.url, ...(item.file ? { file: toRaw(item.file) } : {}) })),
-    media: draft.mode === 'reference' ? draft.media.map(item => ({ ...toRaw(item) })) : [],
+    media: draft.mode === 'reference' ? draft.media.map(item => ({ ...toRaw(item), url: item.file ? '' : item.url })) : [],
     keepOriginalSound: draft.mode === 'reference' && draft.keepOriginalSound,
     ...(draft.mode === 'reference' && limits?.prefer_multi_shots ? { preferMultiShots: draft.preferMultiShots } : {})
   }
+}
+export function selectedReferenceError(refs = activeKlingReferences(), caps: VideoCapabilities = selectedVideoCapabilities()) {
+  const error = validateVideoReferences(refs, caps.references, klingSettings.value.sound)
+  if (error || !usesDreaminaVideo.value) return error
+  const files = [...refs.images, ...refs.media]
+  if (files.some(item => !item.file)) return 'dreaminaReferenceFilesOnly'
+  if (files.length < (caps.min_references ?? 0) ||
+      caps.reference_counts?.length && !caps.reference_counts.includes(files.length)) return 'referencesRequired'
+  if (caps.requires_image_or_video && !refs.images.length && !refs.media.some(item => item.name.startsWith('video_'))) return 'dreaminaReferenceNeedsImageOrVideo'
+  return ''
+}
+
+const dreaminaMimeTypes = {
+  image: ['image/jpeg', 'image/png', 'image/webp'],
+  video: ['video/mp4', 'video/quicktime'],
+  audio: ['audio/mpeg', 'audio/wav', 'audio/x-wav']
+}
+export const dreaminaAssetAccept = (kind: string) => dreaminaMimeTypes[kind === 'video' || kind === 'audio' ? kind : 'image'].join(',')
+function validDreaminaAsset(file: File, kind: keyof typeof dreaminaMimeTypes) {
+  return file.size > 0 && file.size <= 32 * 1024 * 1024 && dreaminaMimeTypes[kind].includes(file.type)
 }
 export function clearKlingReferences() {
   imagePreparationVersion++
@@ -214,6 +243,7 @@ function nextReferenceSlot(kind: string) {
   return list?.find(name => (kind === 'image' ? name.startsWith('image_') : kind === 'keyframe' ? name.startsWith('keyframe_') : kind === 'input' || kind === 'tail_image' ? name === kind : true) && !used.some(item => item.name === name))
 }
 export function addKlingReferenceURL(raw: string, kind: 'image' | 'video' | 'audio' | 'input' | 'tail_image' | 'keyframe') {
+  if (usesDreaminaVideo.value) return false
   if (!publicReferenceURL(raw.trim())) { appStore().showError(t('videoStudio.referenceInvalidURL')); return false }
   const name = nextReferenceSlot(kind)
   if (!name) { appStore().showError(t('videoStudio.referenceSlotUnsupported')); return false }
@@ -230,28 +260,35 @@ export function addKlingReferenceURL(raw: string, kind: 'image' | 'video' | 'aud
 export async function addKlingReferenceFiles(files: File[], kind = 'image', replace = false) {
   if (preparingFirstFrame.value || !files.length) return false
   const session=currentSession(), version=++imagePreparationVersion
-  const selectedModel=model.value, referenceMode=klingReferences.value.mode
+  const selectedModel=model.value, selectedGroup=modelGroupId.value, referenceMode=klingReferences.value.mode
   const caps=klingReferenceCapabilities()[referenceMode]
   if (!caps.references) { appStore().showError(t('videoStudio.referenceUnsupported')); return false }
   preparingFirstFrame.value=true
   const added: VideoReferenceAsset[]=[]
   try {
     const existing=activeKlingReferences()
+    const isMedia = kind === 'video' || kind === 'audio'
+    if (isMedia && !usesDreaminaVideo.value) return false
     if (replace && ['input','tail_image'].includes(kind)) existing.images=existing.images.filter(item=>item.name !== kind)
-    const names=new Set(existing.images.map(item=>item.name))
+    const current = isMedia ? existing.media : existing.images
+    const slots = kind === 'video' ? caps.references.video_slots : kind === 'audio' ? caps.references.audio_slots : caps.references.image_slots
+    const names=new Set(current.map(item=>item.name))
     for (const file of files) {
-      const slot=caps.references.image_slots.find(name => !names.has(name) && (kind === 'image' ? name.startsWith('image_') : kind === 'keyframe' ? name.startsWith('keyframe_') : name === kind))
+      const slot=slots.find(name => !names.has(name) && (kind === 'image' ? name.startsWith('image_') : kind === 'keyframe' ? name.startsWith('keyframe_') : isMedia || name === kind))
       if (!slot) throw new Error('referenceLimitExceeded')
       names.add(slot)
-      const accepted=await prepareVideoFirstFrame(file,caps)
+      if (usesDreaminaVideo.value && !validDreaminaAsset(file, isMedia ? kind as 'video' | 'audio' : 'image')) throw new Error('dreaminaReferenceError')
+      const accepted=isMedia ? file : await prepareVideoFirstFrame(file,caps)
       added.push({ name:slot,file:accepted,url:'' })
     }
-    const error=validateVideoReferences({ ...existing,images:[...existing.images,...added] },caps.references)
+    const proposed = isMedia ? { ...existing, media: [...existing.media, ...added] } : { ...existing, images: [...existing.images, ...added] }
+    const error=validateVideoReferences(proposed,caps.references)
     if (error && error !== 'referencesRequired') throw new Error(error)
-    if (version !== imagePreparationVersion || !isCurrentSession(session) || selectedModel !== model.value || referenceMode !== klingReferences.value.mode) return false
+    if (version !== imagePreparationVersion || !isCurrentSession(session) || selectedModel !== model.value || selectedGroup !== modelGroupId.value || referenceMode !== klingReferences.value.mode) return false
     if (replace && ['input','tail_image'].includes(kind)) removeKlingReference(kind)
-    for (const entry of added) entry.url=URL.createObjectURL(entry.file!)
-    klingReferences.value[referenceMode === 'frames' ? 'frames' : 'images'].push(...added)
+    if (!isMedia) for (const entry of added) entry.url=URL.createObjectURL(entry.file!)
+    const target = isMedia ? 'media' : referenceMode === 'frames' ? 'frames' : 'images'
+    klingReferences.value[target].push(...added)
     mode.value='i2v'
     return true
   } catch(error) {
@@ -474,6 +511,136 @@ interface TaskStatus {
   video?: { url?: string }
 }
 
+type DreaminaReceipt = TaskStatus & {
+  id?: string
+  price_estimate?: number
+  relay?: { phase?: string; max_credits?: number }
+}
+
+function dreaminaURL(task: VideoTask, path: string) {
+  if (!task.groupId || task.groupId <= 0) throw new Error(t('videoStudio.chooseModel'))
+  return api(`${DREAMINA_PATH}/${path}?group_id=${task.groupId}`)
+}
+
+function dreaminaTaskPath(task: VideoTask) {
+  return `tasks/${encodeURIComponent(task.remoteId)}`
+}
+
+function applyDreaminaReceipt(task: VideoTask, receipt: DreaminaReceipt) {
+  const credits = receipt.relay?.max_credits
+  if (typeof credits === 'number' && Number.isSafeInteger(credits) && credits >= 0) task.dreaminaQuoteCredits = credits
+  const price = receipt.price_estimate
+  if (typeof price === 'number' && Number.isFinite(price) && price >= 0) task.dreaminaPriceEstimate = price
+}
+
+async function dreaminaJSON<T extends Pick<TaskStatus, 'error'> & { message?: string }>(
+  task: VideoTask, path: string, init?: RequestInit
+) {
+  const headers = { ...sessionAuthHeader(task), ...init?.headers }
+  const response = await fetch(dreaminaURL(task, path), { ...init, headers })
+  const body = await response.json().catch(() => null) as T | null
+  if (!response.ok || !body)
+    throw new Error((typeof body?.error === 'string' ? body.error : body?.error?.message) || body?.message || `HTTP ${response.status}`)
+  return body
+}
+
+function dreaminaAssetKind(asset: VideoReferenceAsset): keyof typeof dreaminaMimeTypes {
+  return asset.name.startsWith('video_') ? 'video' : asset.name.startsWith('audio_') ? 'audio' : 'image'
+}
+
+async function prepareDreaminaQuote(task: VideoTask) {
+  const refs = task.references
+  const assets = refs?.mode === 'frames'
+    ? [...refs.images].sort((a, b) => Number(a.name !== 'input') - Number(b.name !== 'input'))
+    : [...(refs?.images || []), ...(refs?.media || [])]
+  const controller = new AbortController()
+  submissionControllers.set(task.taskId, controller)
+  try {
+    task.dreaminaAssetIds ||= []
+    for (const [index, asset] of assets.entries()) {
+      if (task.dreaminaAssetIds[index]) continue
+      const kind = dreaminaAssetKind(asset)
+      if (!asset.file || !validDreaminaAsset(asset.file, kind)) throw new Error(t('videoStudio.dreaminaReferenceError'))
+      const timeout = window.setTimeout(() => controller.abort(), DREAMINA_REQUEST_TIMEOUT_MS)
+      try {
+        const body = await dreaminaJSON<{ id?: string; mediaType?: string; error?: TaskStatus['error'] }>(task, 'assets', {
+          method: 'POST',
+          headers: { 'Content-Type': asset.file.type },
+          body: asset.file,
+          signal: controller.signal
+        })
+        if (!body.id || body.mediaType !== kind) throw new Error(t('videoStudio.dreaminaReferenceError'))
+        task.dreaminaAssetIds.push(body.id)
+        await taskPersister?.()
+      } finally { window.clearTimeout(timeout) }
+    }
+    const ratio = videoAspectRatio(task.videoSize || 'auto', true)
+    const payload = {
+      model: task.model,
+      mode: refs?.mode === 'frames' ? 'first_last_frame' : refs ? 'm2v' : 't2v',
+      content: [{ type: 'text', text: task.prompt }],
+      duration: task.seconds,
+      resolution: task.resolution,
+      ...(refs?.mode === 'frames' ? {} : { ratio: ratio === 'auto' ? '16:9' : ratio }),
+      ...(assets.length ? { references: assets.map((asset, index) => ({ id: task.dreaminaAssetIds?.[index], mediaType: dreaminaAssetKind(asset) })) } : {})
+    }
+    const timeout = window.setTimeout(() => controller.abort(), DREAMINA_REQUEST_TIMEOUT_MS)
+    try {
+      const body = await dreaminaJSON<DreaminaReceipt>(task, 'quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': task.submissionKey || '' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+      if (!body.id) throw new Error(t('videoStudio.submitFailed'))
+      task.remoteId = body.id
+      applyDreaminaReceipt(task, body)
+      await taskPersister?.()
+      return body
+    } finally { window.clearTimeout(timeout) }
+  } finally {
+    if (submissionControllers.get(task.taskId) === controller) submissionControllers.delete(task.taskId)
+  }
+}
+
+export async function approveDreaminaVideo(taskId: number) {
+  const task = tasks.value.find(row => row.taskId === taskId)
+  if (!task || task.provider !== 'dreamina' || task.status !== 'awaiting_approval' || !task.remoteId ||
+      task.dreaminaQuoteCredits === undefined || task.dreaminaPriceEstimate === undefined || runningTasks.has(taskId)) return
+  task.owner ||= sessionOwnerKey()
+  task.sessionEpoch ??= sessionEpoch
+  if (!isCurrentSession(task)) return
+  const approvedCredits = task.dreaminaQuoteCredits
+  runningTasks.add(taskId)
+  task.status = 'processing'
+  task.error = undefined
+  const controller = new AbortController()
+  submissionControllers.set(taskId, controller)
+  const timeout = window.setTimeout(() => controller.abort(), DREAMINA_REQUEST_TIMEOUT_MS)
+  try {
+    await taskPersister?.()
+    const receipt = await dreaminaJSON<DreaminaReceipt>(task, `quotes/${encodeURIComponent(task.remoteId)}/approve`, {
+      method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved_credit_ceiling: approvedCredits })
+    })
+    applyDreaminaReceipt(task, receipt)
+  } catch (error) {
+    // Check the original task if we lose the approval reply.
+    if (isCurrentSession(task)) task.error = errText(error)
+  } finally {
+    window.clearTimeout(timeout)
+    submissionControllers.delete(taskId)
+    runningTasks.delete(taskId)
+  }
+  if (!isCurrentSession(task) || !tasks.value.some(row => row.taskId === taskId)) return
+  if (stoppedTasks.delete(taskId)) {
+    task.status = 'failed'
+    task.error = t('videoStudio.stoppedWaiting')
+    return
+  }
+  await runTask(task)
+}
+
 function taskPhase(st: TaskStatus): 'pending' | 'processing' | 'done' | 'failed' {
   const s = String(st.status || st.state || '').toLowerCase()
   if (s === 'done' || s === 'succeeded' || s === 'completed' || s === 'success') return 'done'
@@ -492,6 +659,11 @@ async function pollTask(task: VideoTask): Promise<{ phase: VideoTask['status']; 
   pollControllers.set(task.taskId, controller)
   const timer = window.setTimeout(() => controller.abort(), 30000)
   try {
+    if (task.provider === 'dreamina') {
+      const body = await dreaminaJSON<DreaminaReceipt>(task, dreaminaTaskPath(task), { signal: controller.signal })
+      applyDreaminaReceipt(task, body)
+      return { phase: body.relay?.phase === 'awaiting_approval' ? 'awaiting_approval' : taskPhase(body), statusRaw: body }
+    }
     const res = await fetch(api(`/api/v1/video-studio/tasks/${encodeURIComponent(task.remoteId)}`), {
       headers: { ...sessionAuthHeader(task), ...taskGroupHeaders(task) }, signal: controller.signal,
     })
@@ -505,6 +677,7 @@ async function pollTask(task: VideoTask): Promise<{ phase: VideoTask['status']; 
 async function fetchVideoBlob(task: VideoTask): Promise<Blob> {
   // 大视频(15s/1080p 可达数十 MB)经网关转发较慢:单次 10 分钟,失败自动重试 3 次
   let lastErr: unknown = new Error(t('videoStudio.contentFailed'))
+  task.dreaminaContentUnavailable = false
   for (let attempt = 0; attempt < 3; attempt++) {
     if (!isCurrentSession(task)) throw new StudioSessionChangedError()
     if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 10000))
@@ -512,17 +685,27 @@ async function fetchVideoBlob(task: VideoTask): Promise<Blob> {
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), 600000)
     try {
-      const res = await fetch(api(`/api/v1/video-studio/tasks/${encodeURIComponent(task.remoteId)}/content`), {
+      const url = task.provider === 'dreamina'
+        ? dreaminaURL(task, `${dreaminaTaskPath(task)}/content`)
+        : api(`/api/v1/video-studio/tasks/${encodeURIComponent(task.remoteId)}/content`)
+      const res = await fetch(url, {
         headers: { ...sessionAuthHeader(task), ...taskGroupHeaders(task) },
         signal: controller.signal
       })
       if (!res.ok) {
+        if (task.provider === 'dreamina' && (res.status === 404 || res.status === 501)) {
+          task.dreaminaContentUnavailable = true
+          throw new Error(t('videoStudio.dreaminaContentUnavailable'))
+        }
         const body = await res.json().catch(() => null) as { error?: { message?: string }; message?: string } | null
         throw new Error(body?.error?.message || body?.message || t('videoStudio.contentFailed'))
       }
-      return await res.blob()
+      const blob = await res.blob()
+      if (task.provider === 'dreamina' && (!blob.size || !blob.type.startsWith('video/'))) throw new Error(t('videoStudio.contentFailed'))
+      return blob
     } catch (err) {
       if (!isCurrentSession(task)) throw new StudioSessionChangedError()
+      if (task.dreaminaContentUnavailable) throw err
       lastErr = err instanceof DOMException && err.name === 'AbortError'
         ? new Error(t('videoStudio.downloadTimeout'))
         : err
@@ -637,7 +820,7 @@ async function runTask(task: VideoTask) {
   let pollErrors = 0
   try {
     let pollImmediately = Boolean(task.remoteId)
-    if (!task.remoteId && task.submissionUnconfirmed) {
+    if (!task.remoteId && task.submissionUnconfirmed && task.provider !== 'dreamina') {
       await recoverVideoSubmission(task)
       pollImmediately = Boolean(task.remoteId)
     }
@@ -646,24 +829,33 @@ async function runTask(task: VideoTask) {
       task.submissionKey ||= videoSubmissionKey()
       await taskPersister?.()
       if (!isCurrentSession(task)) return
-      let remoteId: string
-      try {
-        const submitted = await submitTask(task)
-        remoteId = submitted.remoteId
-      } catch (error) {
+      if (task.provider === 'dreamina') {
+        const quote = await prepareDreaminaQuote(task)
         if (!isCurrentSession(task)) return
-        if (!task.submissionUnconfirmed || stoppedTasks.has(task.taskId)) throw error
-        // The acknowledgement may arrive after the browser/CDN gave up. Use
-        // its existing idempotency key instead of posting another generation.
-        task.error = errText(error)
-        await recoverVideoSubmission(task)
-        remoteId = task.remoteId
+        if (quote.relay?.phase === 'awaiting_approval') {
+          task.status = 'awaiting_approval'
+          task.error = undefined
+          return
+        }
         pollImmediately = true
+      } else {
+        try {
+          const submitted = await submitTask(task)
+          if (!isCurrentSession(task)) return
+          task.remoteId = submitted.remoteId
+        } catch (error) {
+          if (!isCurrentSession(task)) return
+          if (!task.submissionUnconfirmed || stoppedTasks.has(task.taskId)) throw error
+          // The acknowledgement may arrive after the browser/CDN gave up. Use
+          // its existing idempotency key instead of posting another generation.
+          task.error = errText(error)
+          await recoverVideoSubmission(task)
+          pollImmediately = true
+        }
+        if (!isCurrentSession(task)) return
+        task.error = undefined
+        tasks.value = [...tasks.value]
       }
-      if (!isCurrentSession(task)) return
-      task.remoteId = remoteId
-      task.error = undefined
-      tasks.value = [...tasks.value]
     }
     const deadline = Date.now() + POLL_TIMEOUT_MS
     for (;;) {
@@ -696,6 +888,11 @@ async function runTask(task: VideoTask) {
         throw new Error(typeof raw === 'string' ? raw : raw?.message || t('videoStudio.submissionUnknown'))
       }
       task.submissionUnconfirmed = false
+      if (phase === 'awaiting_approval') {
+        task.status = phase
+        return
+      }
+      if (task.provider === 'dreamina') task.error = undefined
       if (phase === 'done') {
         // 视频已生成并计费:下载失败只影响取片,不把上游任务整个判死
         task.upstreamDone = true
@@ -769,7 +966,7 @@ export function submitBatch(conversationId?: string): VideoTask[] {
     appStore().showError(t('videoStudio.invalidModelDuration'))
     return []
   }
-  if (!validVideoQuantity(quantity.value)) {
+  if (!validVideoQuantity(quantity.value) || usesDreaminaVideo.value && quantity.value !== 1) {
     appStore().showError(t('videoStudio.outputHint'))
     return []
   }
@@ -783,7 +980,7 @@ export function submitBatch(conversationId?: string): VideoTask[] {
   if (prompt.value.trim().length > caps.prompt_max) { appStore().showError(t('videoStudio.promptTooLong',{ max: caps.prompt_max })); return [] }
   const references = mode.value === 'i2v' && hasKlingReferenceControls() ? activeKlingReferences() : undefined
   if (references) {
-    const error=validateVideoReferences(references,caps.references,klingSettings.value.sound)
+    const error=selectedReferenceError(references,caps)
     if (error) { appStore().showError(t(`videoStudio.${error}`)); return [] }
   }
   const promptText = prompt.value.trim()
@@ -803,6 +1000,7 @@ export function submitBatch(conversationId?: string): VideoTask[] {
       status: 'pending',
       prompt: promptText,
       model: model.value,
+      provider: selectedOption?.provider,
       seconds: seconds.value,
       resolution: /^kling/i.test(model.value) ? klingSettings.value.resolution : resolution.value,
       klingSettings: /^kling/i.test(model.value) ? {
@@ -873,6 +1071,8 @@ export function retryTask(taskId: number) {
     task.submissionUnconfirmed = false
     task.upstreamDone = false
     task.upstreamFailed = false
+    task.dreaminaQuoteCredits = undefined
+    task.dreaminaPriceEstimate = undefined
   }
   // 上游已生成(已计费)的任务:重试仅重新下载,不会重复提交计费
   if (task.upstreamDone && task.remoteId) {
@@ -882,7 +1082,7 @@ export function retryTask(taskId: number) {
     void finishDownload(task)
     return
   }
-  if (!task.remoteId && !task.submissionUnconfirmed) task.submissionKey = videoSubmissionKey()
+  if (!task.remoteId && !task.submissionUnconfirmed && task.provider !== 'dreamina') task.submissionKey = videoSubmissionKey()
   task.status = 'pending'
   task.error = undefined
   tasks.value = [...tasks.value]
@@ -890,6 +1090,7 @@ export function retryTask(taskId: number) {
 }
 
 export function resumeVideoTask(task: VideoTask) {
+  if (task.provider === 'dreamina' && task.dreaminaContentUnavailable) return
   if (task.remoteId && !task.upstreamFailed || task.submissionUnconfirmed && task.submissionKey) retryTask(task.taskId)
 }
 export function archiveVideoTask(task: VideoTask) {
@@ -951,6 +1152,7 @@ async function saveHistory(task: VideoTask) {
     id: task.historyId || task.taskId,
     ts: Date.now(),
     model: task.model,
+    provider: task.provider,
     prompt: task.prompt,
     seconds: task.seconds,
     resolution: task.resolution,

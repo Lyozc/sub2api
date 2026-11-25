@@ -20,19 +20,35 @@ export const klingVideoPriceFamilies = [
   { key: 'kling-v2-6', label: 'Kling 2.6 · kling-v2-6' },
 ] as const
 
+const seedanceVideoResolutions: Record<string, string[]> = {
+  'seedance_2.0': ['720p', '1080p', '4k'],
+  'seedance_2.0_fast': ['720p'],
+  'seedance_2.0_mini': ['720p'],
+  'seedance_2.5': ['480p', '720p', '1080p', '4k'],
+  'seedance_2.5_draft': ['480p'],
+  'seedance_2.5_flash': ['480p', '720p'],
+  'seedance_pro_fast': ['720p', '1080p'],
+}
+
 export function videoPriceResolutions(platform = 'grok') {
   return platform === 'kling'
-    ? [{ key: '720p', label: '720p' }, { key: '1080p', label: '1080p' }, { key: '4k', label: '4K' }]
+    ? [...grokVideoPriceResolutions, { key: '4k', label: '4K' }]
     : [...grokVideoPriceResolutions]
 }
 
 export function videoModelSupportsResolution(model: string, resolution: string, platform = 'grok') {
   // Keep pre-existing custom models editable. Only disable verified unsupported tiers.
+  const seedance = seedanceVideoResolutions[model]
+  if (platform === 'kling' && seedance) return seedance.includes(resolution)
   const known = klingVideoPriceFamilies.some(family => family.key === model)
   return platform !== 'kling' || !known || videoCapabilities(model).resolutions.includes(resolution)
 }
 
-function knownFamilies(platform: string) { return platform === 'kling' ? klingVideoPriceFamilies : grokVideoPriceFamilies }
+function knownFamilies(platform: string) {
+  return platform === 'kling'
+    ? [...klingVideoPriceFamilies, ...Object.keys(seedanceVideoResolutions).map(key => ({ key, label: key }))]
+    : grokVideoPriceFamilies
+}
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 export type VideoModelPricesForm = Record<string, Record<string, number | string | null>>

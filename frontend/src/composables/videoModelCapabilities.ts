@@ -57,6 +57,9 @@ export interface VideoCapabilities {
   image_min_aspect?: number
   image_max_aspect?: number
   image_max_edge?: number
+  min_references?: number
+  requires_image_or_video?: boolean
+  reference_counts?: number[]
   references?: VideoReferenceLimits
 }
 export type VideoCapabilitySet = Partial<Record<'t2v' | 'i2v' | 'reference', VideoCapabilities>>

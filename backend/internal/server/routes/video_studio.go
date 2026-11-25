@@ -103,7 +103,7 @@ func RegisterVideoStudioRoutes(
 	// resolveStudioKey 按 X-Video-Studio-Group 头选定视频分组并确保对应工作台密钥;
 	// 未带头时回落到第一个视频分组。密钥按分组绑定(网关限制单密钥同平台),
 	// 因此多个视频分组同台时由前端按模型所属分组传该头。
-	resolveStudioKey := func(c *gin.Context, userID int64) (*service.APIKey, error) {
+	resolveStudioKey := func(c *gin.Context, userID int64, dreamina bool) (*service.APIKey, error) {
 		groups, err := apiKeyService.VideoStudioGroups(c.Request.Context(), userID)
 		if err != nil {
 			return nil, err
@@ -112,7 +112,14 @@ func RegisterVideoStudioRoutes(
 			return nil, fmt.Errorf("no available video group")
 		}
 		chosen := groups[0]
-		if idStr := strings.TrimSpace(c.GetHeader("X-Video-Studio-Group")); idStr != "" {
+		idStr := strings.TrimSpace(c.GetHeader("X-Video-Studio-Group"))
+		if dreamina && idStr == "" {
+			idStr = strings.TrimSpace(c.Query("group_id"))
+		}
+		if dreamina && idStr == "" {
+			return nil, fmt.Errorf("a Kling video group is required")
+		}
+		if idStr != "" {
 			gid, parseErr := strconv.ParseInt(idStr, 10, 64)
 			found := false
 			if parseErr == nil {
@@ -128,17 +135,20 @@ func RegisterVideoStudioRoutes(
 				return nil, fmt.Errorf("requested video group is unavailable")
 			}
 		}
+		if dreamina && chosen.Platform != service.PlatformKling {
+			return nil, fmt.Errorf("requested group is not a Kling video group")
+		}
 		return apiKeyService.EnsureVideoStudioKeyForGroup(c.Request.Context(), userID, chosen.ID)
 	}
 
-	relay := func(canonicalPath string, pathSuffix string, target gin.HandlerFunc) []gin.HandlerFunc {
+	relayWithLimit := func(canonicalPath string, pathSuffix string, limit gin.HandlerFunc, target gin.HandlerFunc) []gin.HandlerFunc {
 		prepare := func(c *gin.Context) {
 			subject, ok := middleware.GetAuthSubjectFromContext(c)
 			if !ok {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "User not authenticated"})
 				return
 			}
-			apiKey, err := resolveStudioKey(c, subject.UserID)
+			apiKey, err := resolveStudioKey(c, subject.UserID, strings.HasPrefix(canonicalPath, "/dreamina/"))
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				return
@@ -157,10 +167,13 @@ func RegisterVideoStudioRoutes(
 			c.Next()
 		}
 		return []gin.HandlerFunc{
-			prepare, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm,
+			prepare, limit, clientRequestID, opsErrorLogger, endpointNorm,
 			gin.HandlerFunc(apiKeyAuth), billableUsageResponse, groupModelAllowlist,
 			compositeTarget, requireGroup, target,
 		}
+	}
+	relay := func(canonicalPath string, pathSuffix string, target gin.HandlerFunc) []gin.HandlerFunc {
+		return relayWithLimit(canonicalPath, pathSuffix, bodyLimit, target)
 	}
 
 	studio := r.Group("/api/v1/video-studio")
@@ -169,11 +182,17 @@ func RegisterVideoStudioRoutes(
 	studio.Use(panelRateLimiter.Global())
 	{
 		studio.GET("/models", relay("/v1/models", "", func(c *gin.Context) {
-			h.Gateway.VideoStudioModels(c, apiKeyService)
+			h.Gateway.VideoStudioModels(c, apiKeyService, h.OpenAIGateway)
 		})...)
 		studio.POST("/generations", relay(handler.EndpointVideos, "", func(c *gin.Context) { handler.VideoStudioGenerationOnce(c, videoTarget) })...)
 		studio.GET("/submissions/:submission_id", handler.VideoStudioSubmission)
 		studio.GET("/tasks/:request_id", relay("/v1/videos", "", videoStatusTarget)...)
 		studio.GET("/tasks/:request_id/content", relay("/v1/videos", "/content", videoContentTarget)...)
+		dreamina := studio.Group("/dreamina")
+		dreamina.POST("/assets", relayWithLimit("/dreamina/v1/assets", "", middleware.RequestBodyLimit(min(cfg.Gateway.MaxBodySize, service.DreaminaMaxAssetBytes)), h.OpenAIGateway.DreaminaStudioAssets)...)
+		dreamina.POST("/quotes", relayWithLimit("/dreamina/v1/videos", "", middleware.RequestBodyLimit(min(cfg.Gateway.MaxBodySize, service.DreaminaMaxRequestBytes)), h.OpenAIGateway.DreaminaStudioQuotes)...)
+		dreamina.POST("/quotes/:request_id/approve", relayWithLimit("/dreamina/v1/videos", "", middleware.RequestBodyLimit(4096), h.OpenAIGateway.DreaminaStudioApprove)...)
+		dreamina.GET("/tasks/:request_id", relay("/dreamina/v1/videos", "", func(c *gin.Context) { h.OpenAIGateway.DreaminaStudioTask(c, false) })...)
+		dreamina.GET("/tasks/:request_id/content", relay("/dreamina/v1/videos", "/content", func(c *gin.Context) { h.OpenAIGateway.DreaminaStudioTask(c, true) })...)
 	}
 }

@@ -24,22 +24,27 @@ import (
 var videoCapabilitiesJSON []byte
 
 type VideoCapabilities struct {
-	Durations         []int                 `json:"durations"`
-	Resolutions       []string              `json:"resolutions"`
-	DefaultResolution string                `json:"default_resolution"`
-	Ratios            []string              `json:"ratios"`
-	Modes             []string              `json:"modes"`
-	Sound             bool                  `json:"sound"`
-	AudioResolutions  []string              `json:"audio_resolutions"`
-	NegativePrompt    bool                  `json:"negative_prompt"`
-	CFGScale          bool                  `json:"cfg_scale"`
-	PromptMax         int                   `json:"prompt_max"`
-	ImageMaxBytes     int                   `json:"image_max_bytes"`
-	ImageMinEdge      int                   `json:"image_min_edge"`
-	ImageMinAspect    float64               `json:"image_min_aspect,omitempty"`
-	ImageMaxAspect    float64               `json:"image_max_aspect,omitempty"`
-	ImageMaxEdge      int                   `json:"image_max_edge,omitempty"`
-	References        *VideoReferenceLimits `json:"references,omitempty"`
+	Durations            []int                 `json:"durations"`
+	Resolutions          []string              `json:"resolutions"`
+	DefaultResolution    string                `json:"default_resolution"`
+	Ratios               []string              `json:"ratios"`
+	Modes                []string              `json:"modes"`
+	Sound                bool                  `json:"sound"`
+	AudioResolutions     []string              `json:"audio_resolutions"`
+	NegativePrompt       bool                  `json:"negative_prompt"`
+	CFGScale             bool                  `json:"cfg_scale"`
+	PromptMax            int                   `json:"prompt_max"`
+	ImageMaxBytes        int                   `json:"image_max_bytes"`
+	ImageMinEdge         int                   `json:"image_min_edge"`
+	ImageMinAspect       float64               `json:"image_min_aspect,omitempty"`
+	ImageMaxAspect       float64               `json:"image_max_aspect,omitempty"`
+	ImageMaxEdge         int                   `json:"image_max_edge,omitempty"`
+	References           *VideoReferenceLimits `json:"references,omitempty"`
+	MinReferences        int                   `json:"min_references,omitempty"`
+	MaxVideos            int                   `json:"max_videos,omitempty"`
+	MaxAudios            int                   `json:"max_audios,omitempty"`
+	RequiresImageOrVideo bool                  `json:"requires_image_or_video,omitempty"`
+	ReferenceCounts      []int                 `json:"reference_counts,omitempty"`
 }
 
 var videoCapabilities = func() map[string]map[string]VideoCapabilities {

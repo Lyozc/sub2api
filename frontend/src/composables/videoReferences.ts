@@ -46,5 +46,6 @@ export function validateVideoReferences(refs: VideoReferences, limits?: VideoRef
 }
 
 export function copyVideoReferences(refs?: VideoReferences): VideoReferences | undefined {
-  return refs ? { ...refs, images: refs.images.map(item=>({name:item.name,url:item.file ? '' : item.url,...(item.file ? {file:item.file} : {})})), media: refs.media.map(item=>({name:item.name,url:item.url})) } : undefined
+  const copyAsset = ({ name, url, file }: VideoReferenceAsset) => file ? { name, url: '', file } : { name, url }
+  return refs ? { ...refs, images: refs.images.map(copyAsset), media: refs.media.map(copyAsset) } : undefined
 }

@@ -52,12 +52,17 @@ describe('Grok video model pricing form', () => {
 describe('Kling video model pricing form', () => {
   it('provides Kling model rows and valid resolution tiers separately from Grok', () => {
     const form = createVideoModelPricesForm(undefined,'kling')
-    expect(videoModelPriceFamilyRows(form,'kling').map(row=>row.key)).toEqual(['kling-v4','kling-v4-flash','kling-v3','kling-v3-omni','kling-o1','kling-v2-6'])
-    expect(videoPriceResolutions('kling').map(row=>row.key)).toEqual(['720p','1080p','4k'])
+    expect(videoModelPriceFamilyRows(form,'kling').map(row=>row.key)).toEqual([
+      'kling-v4','kling-v4-flash','kling-v3','kling-v3-omni','kling-o1','kling-v2-6',
+      'seedance_2.0','seedance_2.0_fast','seedance_2.0_mini','seedance_2.5','seedance_2.5_draft','seedance_2.5_flash','seedance_pro_fast'
+    ])
+    expect(videoPriceResolutions('kling').map(row=>row.key)).toEqual(['480p','720p','1080p','4k'])
     expect(form['kling-v4']['720p']).toBeNull()
     expect(videoModelSupportsResolution('kling-v4-flash','1080p','kling')).toBe(false)
     expect(videoModelSupportsResolution('kling-v4','4k','kling')).toBe(false)
     expect(videoModelSupportsResolution('kling-v3-omni','4k','kling')).toBe(true)
+    expect(videoModelSupportsResolution('seedance_2.5_flash','480p','kling')).toBe(true)
+    expect(videoModelSupportsResolution('seedance_2.0_mini','480p','kling')).toBe(false)
   })
   it('merges legacy aliases, preserves zero and custom prices, and clears only blank cells', () => {
     const form=createVideoModelPricesForm({'kling-4.0':{'720p':0.12},'kling-video-v4_0':{'1080p':0.25},'future-video':{'4k':1.1}},'kling')

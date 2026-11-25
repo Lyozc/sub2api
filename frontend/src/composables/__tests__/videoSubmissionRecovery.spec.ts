@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { IDBFactory } from 'fake-indexeddb'
 
 vi.mock('@/i18n', () => ({ i18n: { global: { t: (key: string) => key } } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }) }))
@@ -191,6 +192,70 @@ describe('video submission acknowledgement recovery', () => {
     engine.retryTask(task.taskId)
     await vi.advanceTimersByTimeAsync(0)
     expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
+
+  it('resumes a Seedance quote with its original key and checks a lost approval without reapproving', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory())
+    const createObjectURL = vi.fn(() => 'blob:seedance-video')
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL, revokeObjectURL: vi.fn() }))
+    let quoteAttempts = 0
+    let approvalAttempts = 0
+    const fetcher = vi.fn(async (url: string, _options?: RequestInit) => {
+      if (url.includes('/quotes?')) {
+        if (++quoteAttempts === 1) throw new TypeError('quote connection lost')
+        return reply({ id: 'seedance-task', status: 'queued', price_estimate: 0.25, relay: { phase: 'awaiting_approval', max_credits: 84 } })
+      }
+      if (url.includes('/approve?')) {
+        ++approvalAttempts
+        if (approvalAttempts === 1) throw new TypeError('approval connection lost')
+        return reply({ id: 'seedance-task', status: 'running' })
+      }
+      if (url.includes('/content?')) return { ok: true, blob: async () => new Blob(['mp4'], { type: 'video/mp4' }) }
+      return approvalAttempts < 2
+        ? reply({ id: 'seedance-task', status: 'queued', relay: { phase: 'awaiting_approval', max_credits: 91 } })
+        : reply({ id: 'seedance-task', status: 'succeeded' })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const engine = await import('../useVideoStudioEngine')
+    engine.model.value = 'seedance_2.5_flash'
+    engine.modelGroupId.value = 42
+    engine.models.value = [{
+      id: engine.model.value, group_id: 42, group_name: 'Dreamina', provider: 'dreamina',
+      capabilities: { t2v: {
+        durations: [4], resolutions: ['480p'], default_resolution: '480p', ratios: ['16:9'], modes: [],
+        sound: false, audio_resolutions: [], negative_prompt: false, cfg_scale: false,
+        prompt_max: 12000, image_max_bytes: 32 << 20, image_min_edge: 0
+      } }
+    }]
+    engine.prompt.value = 'paper boat'
+    engine.seconds.value = 4
+    engine.resolution.value = '480p'
+    const [task] = engine.submitBatch()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(task.status).toBe('failed')
+    engine.retryTask(task.taskId)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(task.status).toBe('awaiting_approval')
+    expect(task.dreaminaQuoteCredits).toBe(84)
+    expect(task.dreaminaPriceEstimate).toBe(0.25)
+    const quotes = fetcher.mock.calls.filter(([url]) => url.includes('/quotes?'))
+    expect(quotes).toHaveLength(2)
+    expect(quotes[1][1]?.body).toBe(quotes[0][1]?.body)
+    expect((quotes[1][1]?.headers as Record<string,string>)['Idempotency-Key']).toBe(task.submissionKey)
+    expect(quotes[1][0]).toContain('group_id=42')
+    expect(approvalAttempts).toBe(0)
+
+    void engine.approveDreaminaVideo(task.taskId)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(task.status).toBe('awaiting_approval')
+    expect(task.dreaminaQuoteCredits).toBe(91)
+    expect(approvalAttempts).toBe(1)
+    void engine.approveDreaminaVideo(task.taskId)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(approvalAttempts).toBe(2)
+    expect(fetcher.mock.calls.findLast(([url]) => url.includes('/approve?'))?.[1]?.body).toBe(JSON.stringify({ approved_credit_ceiling: 91 }))
+    expect(task.status, task.error).toBe('done')
+    expect(task.blob?.type).toBe('video/mp4')
   })
 
 })

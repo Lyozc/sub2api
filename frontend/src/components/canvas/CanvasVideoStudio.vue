@@ -314,7 +314,7 @@
           >
             <template #trigger>
               <Icon name="inbox" size="xs" aria-hidden="true" /><span class="chip-text">{{
-                t(klingReferences.mode === 'frames' ? 'videoStudio.referenceFrames' : 'videoStudio.referenceOmni')
+                t(klingReferences.mode === 'frames' ? (usesDreaminaVideo ? 'videoStudio.dreaminaFrames' : 'videoStudio.referenceFrames') : 'videoStudio.referenceOmni')
               }}</span>
             </template>
             <VideoReferenceControls @pick="showPicker = true" />
@@ -332,6 +332,7 @@
                 v-model:duration="seconds"
                 v-model:ratio="videoSize"
                 v-model:quantity="quantity"
+                :max-quantity="usesDreaminaVideo ? 1 : 4"
                 :resolution-options="resolutionOptions"
                 :supported-resolutions="supportedResolutions"
                 :duration-min="durationRange.min"
@@ -490,7 +491,9 @@
             <button class="generate-button" data-testid="video-send" type="submit" :disabled="!canSend">
               <span v-if="generating" class="button-spinner" aria-hidden="true"></span
               ><Icon v-else name="sparkles" size="sm" aria-hidden="true" />{{
-                generating ? t('videoStudio.batchGenerating') : t('videoStudio.generateN', { n: quantity })
+                usesDreaminaVideo
+                  ? t(generating ? 'videoStudio.dreaminaFetchingQuote' : 'videoStudio.dreaminaGetQuote')
+                  : generating ? t('videoStudio.batchGenerating') : t('videoStudio.generateN', { n: quantity })
               }}
             </button>
           </div>
@@ -513,7 +516,6 @@ import StudioLegacyHistory from './StudioLegacyHistory.vue'
 import VideoGenerationCard from './VideoGenerationCard.vue'
 import VideoParameterControls from './VideoParameterControls.vue'
 import VideoReferenceControls from './VideoReferenceControls.vue'
-import { validateVideoReferences } from '@/composables/videoReferences'
 import CanvasImagePicker from './CanvasImagePicker.vue'
 import WorkbenchLayout from './WorkbenchLayout.vue'
 import WorkbenchPopover from './WorkbenchPopover.vue'
@@ -553,6 +555,8 @@ import {
   preparingFirstFrame,
   hasKlingReferenceControls,
   activeKlingReferences,
+  usesDreaminaVideo,
+  selectedReferenceError,
   klingReferences,
   removeKlingReference,
   selectedVideoCapabilities,
@@ -595,14 +599,14 @@ const visibleTasks = computed(() =>
   tasks.value
     .filter((task) => !task.archived)
     .filter((task) => {
-      if (resultFilter.value === 'active' && !['pending', 'processing'].includes(task.status)) return false
+      if (resultFilter.value === 'active' && !['pending', 'processing', 'awaiting_approval'].includes(task.status)) return false
       if (resultFilter.value === 'done' && task.status !== 'done') return false
       return `${task.prompt} ${task.model}`.toLowerCase().includes(search.value.toLowerCase())
     })
     .sort((a, b) => b.submittedAt - a.submittedAt || b.taskId - a.taskId)
 )
 const activeCount = computed(
-  () => tasks.value.filter((task) => !task.archived && ['pending', 'processing'].includes(task.status)).length
+  () => tasks.value.filter((task) => !task.archived && ['pending', 'processing', 'awaiting_approval'].includes(task.status)).length
 )
 const totalCount = computed(() => tasks.value.filter((task) => !task.archived).length)
 const showPicker = ref(false)
@@ -725,8 +729,9 @@ const canSend = computed(
     durationValid.value &&
     capabilities.value.resolutions.includes(selectedResolution.value) &&
     validVideoQuantity(quantity.value) &&
+    (!usesDreaminaVideo.value || quantity.value === 1) &&
     cfgValid.value &&
-    (mode.value !== 'i2v' || (hasKlingReferenceControls() ? !validateVideoReferences(activeKlingReferences(), capabilities.value.references, klingSettings.value.sound) : refImages.value.length > 0)) &&
+    (mode.value !== 'i2v' || (hasKlingReferenceControls() ? !selectedReferenceError() : refImages.value.length > 0)) &&
     !generating.value &&
     !preparingFirstFrame.value &&
     !aiLoading.value &&
@@ -752,7 +757,7 @@ const estimatedUnitPrice = computed(() => {
   const price = prices?.[selectedResolution.value || capabilities.value.default_resolution]
   return typeof price === 'number' && Number.isFinite(price) && price >= 0 ? price : null
 })
-const hasBillableVideoReference = computed(() => mode.value === 'i2v' && hasKlingReferenceControls() && activeKlingReferences().media.some(item => item.name.startsWith('video_')))
+const hasBillableVideoReference = computed(() => !usesDreaminaVideo.value && mode.value === 'i2v' && hasKlingReferenceControls() && klingReferences.value.mode === 'reference' && klingReferences.value.media.some(item => item.name.startsWith('video_')))
 const estimatedCost = computed(() => {
   if (!durationValid.value || !validVideoQuantity(quantity.value)) return ''
   const price = estimatedUnitPrice.value
@@ -798,7 +803,7 @@ watch(
         const option = models.value.find((option) => option.id === saved.model && option.group_id === saved.groupId)
         if (option) selectedModel.value = modelKey(option)
         if (validVideoDuration(saved.seconds)) seconds.value = saved.seconds
-        if (validVideoQuantity(saved.quantity)) quantity.value = saved.quantity
+        if (validVideoQuantity(saved.quantity) && !usesDreaminaVideo.value) quantity.value = saved.quantity
         if (aspectOptions.value.some((option) => option.value === saved.size)) videoSize.value = saved.size
         if (saved.resolution === '' || RESOLUTIONS.includes(saved.resolution)) resolution.value = saved.resolution
         const settings = defaultKlingSettings()
@@ -824,6 +829,7 @@ watch(
   [capabilities, selectedResolution],
   () => {
     const caps = capabilities.value
+    if (usesDreaminaVideo.value) quantity.value = 1
     if (!caps.resolutions.includes(selectedResolution.value))
       selectedResolution.value = caps.resolutions.includes('720p') ? '720p' : caps.resolutions[0]
     if (!audioAllowed.value && klingSettings.value.sound === 'on') klingSettings.value.sound = 'off'
@@ -1029,7 +1035,7 @@ const klingRefThumbs = computed(() => {
 const referenceHint = computed(() => {
   if (mode.value !== 'i2v') return ''
   if (hasKlingReferenceControls()) {
-    const error = validateVideoReferences(activeKlingReferences(), capabilities.value.references, klingSettings.value.sound)
+    const error = selectedReferenceError()
     return error ? t(`videoStudio.${error}`) : ''
   }
   return refImages.value.length ? '' : L.value.noReference

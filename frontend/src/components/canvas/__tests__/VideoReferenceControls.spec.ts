@@ -8,14 +8,16 @@ const state = vi.hoisted(() => ({ value: null as unknown }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/composables/useVideoStudioEngine', async () => {
   const { ref } = await import('vue')
-  const { emptyVideoReferences } = await import('@/composables/videoReferences')
+  const { emptyVideoReferences, validateVideoReferences } = await import('@/composables/videoReferences')
   const { videoCapabilities } = await import('@/composables/videoModelCapabilities')
   const klingReferences = ref(emptyVideoReferences())
   const model = ref('kling-v4')
+  const klingSettings = ref({ sound: 'off' })
+  const activeKlingReferences = () => ({ ...klingReferences.value, images: klingReferences.value.mode === 'frames' ? klingReferences.value.frames : klingReferences.value.images, media: klingReferences.value.mode === 'reference' ? klingReferences.value.media : [] })
   const engine = {
-    klingReferences, model, klingSettings: ref({ sound: 'off' }), preparingFirstFrame: ref(false),
+    klingReferences, model, klingSettings, preparingFirstFrame: ref(false), usesDreaminaVideo: ref(false),
+    selectedReferenceError: (_refs: unknown, caps: ReturnType<typeof videoCapabilities>) => validateVideoReferences(activeKlingReferences(), caps.references, klingSettings.value.sound),
     klingReferenceCapabilities: () => ({ frames: videoCapabilities(model.value, 'i2v'), reference: videoCapabilities(model.value, 'reference') }),
-    activeKlingReferences: () => ({ ...klingReferences.value, images: klingReferences.value.mode === 'frames' ? klingReferences.value.frames : klingReferences.value.images, media: klingReferences.value.mode === 'reference' ? klingReferences.value.media : [] }),
     removeKlingReference: (name: string) => { klingReferences.value.media = klingReferences.value.media.filter(item => item.name !== name) },
     addKlingReferenceFiles: vi.fn(), addKlingReferenceURL: vi.fn(), moveKlingKeyframe: vi.fn()
   }

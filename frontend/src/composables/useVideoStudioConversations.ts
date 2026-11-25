@@ -33,7 +33,7 @@ function captureSnapshot(): Snapshot {
     activeId: activeConversationId.value,
     tasks: tasks.value.filter(task => task.conversationId).map(task => {
       const { blob: _blob, videoUrl: _url, owner: _owner, sessionEpoch: _epoch, ...saved } = toRaw(task)
-      return { ...saved, references: copyVideoReferences(saved.references), klingSettings: saved.klingSettings ? { ...toRaw(saved.klingSettings) } : undefined, refImage: saved.refImage ? toRaw(saved.refImage) : undefined }
+      return { ...saved, dreaminaAssetIds: saved.dreaminaAssetIds?.slice(), references: copyVideoReferences(saved.references), klingSettings: saved.klingSettings ? { ...toRaw(saved.klingSettings) } : undefined, refImage: saved.refImage ? toRaw(saved.refImage) : undefined }
     }),
   }
 }
@@ -148,12 +148,12 @@ export function initVideoConversations(): Promise<void> {
       const video = history.value.find(item => item.id === task.historyId || item.taskId === task.taskId)
       return {
         ...task,
-        submissionUnconfirmed: !video && !task.remoteId && (task.submissionUnconfirmed || !task.submissionKey || task.status === 'pending' || task.status === 'processing'),
+        submissionUnconfirmed: task.provider !== 'dreamina' && !video && !task.remoteId && (task.submissionUnconfirmed || !task.submissionKey || task.status === 'pending' || task.status === 'processing'),
         historyId: video?.id ?? task.historyId,
-        status: video && !task.assetDeleted ? 'done' : 'failed',
+        status: video && !task.assetDeleted ? 'done' : task.status === 'awaiting_approval' ? 'awaiting_approval' : 'failed',
         archived: task.assetDeleted || task.archived,
         // Refresh resumes the original receipt/job and never creates a new one.
-        error: video ? undefined : task.status === 'failed' ? task.error
+        error: video ? undefined : task.status === 'failed' || task.status === 'awaiting_approval' ? task.error
           : i18n.global.t(task.status === 'done' ? 'videoStudio.localVideoMissing' : 'videoStudio.resumeAfterReload'),
         videoUrl: video && !task.assetDeleted ? URL.createObjectURL(video.blob) : undefined,
         blob: task.assetDeleted ? undefined : video?.blob,
@@ -167,7 +167,7 @@ export function initVideoConversations(): Promise<void> {
     conversationsReady.value = true
     void persistConversations()
     for (const task of restored) {
-      if (!task.archived && !task.assetDeleted && task.status !== 'done' && !task.upstreamFailed && (task.remoteId || task.submissionUnconfirmed && task.submissionKey)) resumeVideoTask(task)
+      if (!task.archived && !task.assetDeleted && task.status === 'failed' && !task.upstreamFailed && (task.remoteId || task.submissionUnconfirmed && task.submissionKey)) resumeVideoTask(task)
     }
   })().catch(() => {
     if (version === epoch && owner === sessionOwnerKey()) {
@@ -190,7 +190,7 @@ export function importVideoHistory() {
       }
       tasks.value.push({
         taskId: item.taskId || item.id, historyId: item.id, remoteId: '', conversationId: id,
-        status: 'done', prompt: item.prompt, model: item.model, seconds: item.seconds,
+        status: 'done', prompt: item.prompt, model: item.model, provider: item.provider, seconds: item.seconds,
         resolution: item.resolution, klingSettings: item.klingSettings, submittedAt: item.ts, videoUrl: URL.createObjectURL(item.blob),
         groupId: item.groupId, videoSize: item.videoSize, refImage: item.refImage, mode: item.mode, references: copyVideoReferences(item.references), billableDuration: item.billableDuration, billingNote: item.billingNote,
       })
