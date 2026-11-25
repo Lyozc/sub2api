@@ -325,6 +325,35 @@ describe('studio chat workflow', () => {
     expect(fetch).toHaveBeenCalledTimes(2); expect(engine.activeChat.value!.messages).toHaveLength(2)
     expect(engine.activeChat.value!.messages[1].content).toBe('Reply')
   })
+  it('keeps flushed and buffered text and the gateway trace after a terminal HTTP/2 error', async () => {
+    const response = stream(delta('First') + delta(' part') + 'data: {"error":{"type":"upstream_error","message":"Upstream HTTP/2 stream failed"}}\n\n')
+    response.headers.set('X-Client-Request-ID', 'client-request-1')
+    response.headers.set('X-Request-ID', 'relay-id')
+    vi.mocked(fetch).mockResolvedValueOnce(response)
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    engine.activeChat.value!.draft = 'Hello'
+    await engine.sendChat()
+    await engine.reloadChatHistory()
+    expect(engine.activeChat.value!.messages.at(-1)).toMatchObject({
+      content: 'First part', status: 'failed', error: 'Upstream HTTP/2 stream failed', clientRequestId: 'client-request-1'
+    })
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it('recognizes the stable HTTP/2 error code before any text and ignores oversized trace headers', async () => {
+    const response = Response.json({ error: { code: 'upstream_http2_stream_error', message: 'connection reset' } }, {
+      status: 502, headers: { 'X-Client-Request-ID': 'x'.repeat(65) }
+    })
+    vi.mocked(fetch).mockResolvedValueOnce(response)
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    engine.activeChat.value!.draft = 'Hello'
+    await engine.sendChat()
+    const reply = engine.activeChat.value!.messages.at(-1)
+    expect(reply).toMatchObject({ content: '', status: 'failed', error: 'Upstream HTTP/2 stream failed' })
+    expect(reply?.clientRequestId).toBeUndefined()
+    expect(fetch).toHaveBeenCalledOnce()
+  })
   it('does not send a paid request when the initial history save fails', async () => {
     const engine = await import('../useStudioChat'); await engine.initStudioChat()
     vi.spyOn(indexedDB, 'open').mockImplementation(() => { throw new DOMException('Denied', 'SecurityError') })

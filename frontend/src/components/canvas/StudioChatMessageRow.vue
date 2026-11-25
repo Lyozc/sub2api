@@ -15,7 +15,16 @@
     </p>
 
     <p v-if="message.status === 'stopped'" class="chat-message-note">{{ t('studioChat.stopped') }}</p>
-    <p v-if="message.status === 'failed'" class="chat-message-error" role="alert">{{ message.error || t('studioChat.requestFailed') }}</p>
+    <template v-if="message.status === 'failed'">
+      <p class="chat-message-error" role="alert">
+        <template v-if="http2Interrupted">
+          {{ t(message.content ? 'studioChat.http2InterruptedPartial' : 'studioChat.http2Interrupted') }}
+          <span v-if="last">{{ t('studioChat.interruptedRetry') }}</span>
+        </template>
+        <template v-else>{{ message.error || t('studioChat.requestFailed') }}</template>
+      </p>
+      <p v-if="message.clientRequestId" class="chat-message-note">{{ t('studioChat.traceId', { id: message.clientRequestId }) }}</p>
+    </template>
 
     <div v-if="message.content || retryable" class="chat-message-actions">
       <button v-if="message.content" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-label="t('studioChat.copy')" @click="emit('copy')">
@@ -58,6 +67,7 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import Icon from '@/components/icons/Icon.vue'
 import type { StudioChatMessage } from '@/composables/studioChatStorage'
+import { studioChatHTTP2ErrorMessage } from '@/composables/studioChatStream'
 import { extractStudioChatHtml, studioChatHtmlDocument } from './studioChatHtml'
 
 const props = defineProps<{
@@ -80,6 +90,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const assistant = computed(() => props.message.role === 'assistant')
 const streaming = computed(() => props.message.status === 'streaming')
+const http2Interrupted = computed(() => props.message.error === studioChatHTTP2ErrorMessage)
 const retryable = computed(() => assistant.value && (props.message.status === 'failed' || props.message.status === 'stopped'))
 const waiting = computed(() => streaming.value && !props.message.content)
 const elapsedSeconds = ref(0)

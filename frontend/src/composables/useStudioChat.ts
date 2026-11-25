@@ -224,6 +224,7 @@ export async function sendChat(retry = false) {
   setRunning(conversation.id, true)
   const conversationId = conversation.id
   let watchdog: ReturnType<typeof watchChatActivity> | undefined
+  let clientRequestId: string | undefined
   let pendingText = ''
   let textTimer: number | undefined
   function flushText() {
@@ -251,6 +252,8 @@ export async function sendChat(retry = false) {
       body: JSON.stringify({ key_id: selected.id, model, messages: context }), signal: requestController.signal
     })
     watchdog.activity(false)
+    const trace = response.headers.get('X-Client-Request-ID')
+    if (trace && /^[a-zA-Z0-9._-]{1,64}$/.test(trace)) clientRequestId = trace
     const finishReason = await readStudioChatResponse(response, appendText, requestController.signal, watchdog.activity)
     flushText()
     if (state.current() && !removed.has(conversation.id)) {
@@ -261,7 +264,10 @@ export async function sendChat(retry = false) {
   } catch (error) {
     if (!state.current() || removed.has(conversation.id)) return
     responseMessage.status = stoppedConversations.has(conversation.id) && !watchdog?.timeoutKey ? 'stopped' : 'failed'
-    if (responseMessage.status === 'failed') responseMessage.error = watchdog?.timeoutKey ? t(watchdog.timeoutKey) : errorMessage(error)
+    if (responseMessage.status === 'failed') {
+      responseMessage.error = watchdog?.timeoutKey ? t(watchdog.timeoutKey) : errorMessage(error)
+      responseMessage.clientRequestId = clientRequestId
+    }
   } finally {
     watchdog?.stop()
     flushText()

@@ -7,7 +7,7 @@ import StudioChatMessageRow from '../StudioChatMessageRow.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, params?: { seconds: number }) => params ? String(params.seconds) : key
+    t: (key: string, params?: { seconds?: number; id?: string }) => params ? String(params.seconds ?? params.id) : key
   })
 }))
 
@@ -31,6 +31,26 @@ afterEach(() => {
 })
 
 describe('studio chat rendering', () => {
+  it('explains message-only HTTP/2 failures in saved chats, with retry guidance only on the last reply', async () => {
+    const message = reactive<StudioChatMessage>({
+      id: 'reply', role: 'assistant', status: 'failed', content: '', error: 'Upstream HTTP/2 stream failed'
+    })
+    const wrapper = row(message)
+    expect(wrapper.get('[role="alert"]').text()).toContain('studioChat.http2Interrupted')
+    expect(wrapper.get('[role="alert"]').text()).toContain('studioChat.interruptedRetry')
+    expect(wrapper.find('.chat-message-note').exists()).toBe(false)
+    message.content = 'Partial answer'
+    message.clientRequestId = 'incident-123'
+    await wrapper.setProps({ last: false })
+    expect(wrapper.get('[role="alert"]').text()).toBe('studioChat.http2InterruptedPartial')
+    expect(wrapper.get('.chat-markdown').text()).toBe('Partial answer')
+    expect(wrapper.get('.chat-message-note').text()).toContain('incident-123')
+    message.error = 'Insufficient balance'
+    await nextTick()
+    expect(wrapper.get('[role="alert"]').text()).toBe('Insufficient balance')
+    wrapper.unmount()
+  })
+
   it('shows growing replies as text and only formats each settled message once', async () => {
     const parse = vi.spyOn(marked, 'parse')
     const message = reactive<StudioChatMessage>({ id: 'reply', role: 'assistant', status: 'streaming', content: '' })

@@ -8,6 +8,7 @@ export interface StudioChatMessage {
   model?: string
   startedAt?: number
   error?: string
+  clientRequestId?: string
 }
 export interface StudioChatConversation {
   id: string

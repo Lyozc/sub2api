@@ -11,7 +11,11 @@ function messageText(message?: { content?: unknown; refusal?: unknown }): string
   return textContent(message?.content) || textContent(message?.refusal)
 }
 
-function errorText(body: { error?: { message?: string } | string; message?: string }): string {
+// Older gateway versions return only this message, including in saved chats.
+export const studioChatHTTP2ErrorMessage = 'Upstream HTTP/2 stream failed'
+
+function errorText(body: { error?: { message?: string; code?: string } | string; message?: string }): string {
+  if (typeof body.error === 'object' && body.error?.code === 'upstream_http2_stream_error') return studioChatHTTP2ErrorMessage
   return typeof body.error === 'string' ? body.error : body.error?.message || body.message || 'Chat request failed'
 }
 

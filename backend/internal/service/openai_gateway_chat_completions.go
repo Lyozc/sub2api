@@ -822,6 +822,10 @@ func (s *OpenAIGatewayService) newOpenAICompatBufferedReadFailoverError(
 	return failoverErr
 }
 
+// StudioChatHTTP2RetryAllowedKey is set only by the Studio streaming handler.
+// A false value identifies Studio requests that cannot use another attempt.
+const StudioChatHTTP2RetryAllowedKey = "studio_chat_http2_retry_allowed"
+
 // handleChatStreamingResponse reads Responses SSE events from upstream,
 // converts each to Chat Completions SSE chunks, and writes them to the client.
 func (s *OpenAIGatewayService) handleChatStreamingResponse(
@@ -849,6 +853,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
+	_, studioChat := c.Get(StudioChatHTTP2RetryAllowedKey)
+	studioPreambleOnly := c.GetBool(StudioChatHTTP2RetryAllowedKey)
+	studioHeldRole := false
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
@@ -913,6 +920,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			studioPreambleOnly = false
 			logger.L().Warn("openai chat_completions stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
@@ -924,6 +932,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
+		isErrorEvent := event.Type == "error" || event.Type == "response.failed"
+		if studioPreambleOnly {
+			// Only known transport/queue metadata may precede a replay. Reasoning,
+			// tools, usage and unknown progress all commit the attempt, even if
+			// the Chat Completions converter has emitted no text for them.
+			studioPreambleOnly = (openAIStreamEventIsMetadata(event.Type) || isErrorEvent) &&
+				event.Item == nil && event.Part == nil && event.Delta == "" && event.Text == "" &&
+				event.Usage == nil && (event.Response == nil || (event.Response.Usage == nil && len(event.Response.Output) == 0)) &&
+				!openAIUsageHasTokens(&usage)
+		}
 		if isTerminalEvent {
 			terminalEventType = strings.TrimSpace(event.Type)
 			if event.Usage != nil {
@@ -971,8 +989,17 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if strings.TrimSpace(event.Type) == "error" {
 				shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
 			}
-			if !clientOutputStarted && shouldFailover {
+			studioHTTP2Reset := studioChat && (event.Code == OpenAIUpstreamHTTP2StreamErrorCode ||
+				openAIStreamFailedEventErrorCode(payloadBytes) == OpenAIUpstreamHTTP2StreamErrorCode)
+			if studioHTTP2Reset {
+				shouldFailover = studioPreambleOnly && !clientDisconnected && c.Request.Context().Err() == nil
+			}
+			if !clientOutputStarted && shouldFailover && (!studioHeldRole || studioHTTP2Reset) {
 				streamFailoverErr = s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header)
+				if studioHTTP2Reset {
+					streamFailoverErr.RetryableOnSameAccount = true
+					streamFailoverErr.SameAccountRetryMax = 1
+				}
 				return true
 			}
 			s.handleOpenAIStreamTerminalAccountSideEffects(c, account, payloadBytes, message, resp.Header, upstreamModel)
@@ -989,16 +1016,17 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				defaultStatus, defaultErrType, defaultMsg = status, errType, errMsg
 				MarkResponseCommitted(c)
 			}
-			errorPayload, _ := json.Marshal(gin.H{
-				"error": gin.H{
-					"type":    defaultErrType,
-					"message": defaultMsg,
-				},
-			})
+			errorObject := gin.H{"type": defaultErrType, "message": defaultMsg}
+			if studioHTTP2Reset {
+				errorObject["code"] = OpenAIUpstreamHTTP2StreamErrorCode
+			}
+			errorEnvelope := gin.H{"error": errorObject}
 			if c != nil && c.Writer != nil && !c.Writer.Written() {
-				writeChatCompletionsError(c, defaultStatus, defaultErrType, defaultMsg)
+				MarkResponseCommitted(c)
+				c.JSON(defaultStatus, errorEnvelope)
 				clientOutputStarted = true
 			} else if c != nil && c.Writer != nil && !clientDisconnected {
+				errorPayload, _ := json.Marshal(errorEnvelope)
 				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected while writing upstream error",
@@ -1026,6 +1054,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					continue
 				}
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+					pendingSSE = append(pendingSSE, sse)
+					continue
+				}
+				if studioPreambleOnly && event.Type == "response.created" {
+					studioHeldRole = true
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -1308,7 +1341,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
+			// Studio's route sends transport-only heartbeats independently. Allow
+			// its gateway writer to stay uncommitted until model output arrives.
+			if (refusalDetector.Enabled() || studioPreambleOnly) && !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

@@ -168,6 +168,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	studioChat := c.FullPath() == "/api/v1/studio/chat" && strings.Contains(c.GetHeader("Accept"), "text/event-stream")
+	firstStudioAttempt := true
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -253,6 +255,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
+		if studioChat {
+			// The Studio heartbeat can keep an uncommitted stream alive through a
+			// single pool retry. Subsequent attempts must surface another reset.
+			c.Set(service.StudioChatHTTP2RetryAllowedKey, firstStudioAttempt && account.IsPoolMode() && account.GetPoolModeRetryCount() > 0)
+			firstStudioAttempt = false
+		}
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
