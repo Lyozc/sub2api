@@ -162,6 +162,38 @@ export async function retryChatSave() {
   }
 }
 
+// The transport sends SSE comments even when the model has no tokens to emit.
+// Track those separately so a healthy, slow generation can outlive five minutes
+// while a relay sending only heartbeats cannot keep a conversation busy forever.
+const CONNECTION_IDLE_MS = 5 * 60_000
+const MODEL_IDLE_MS = 15 * 60_000
+
+function watchChatActivity(controller: AbortController) {
+  let lastActivity = Date.now()
+  let lastProgress = lastActivity
+  let timeoutKey: 'studioChat.timeout' | 'studioChat.modelTimeout' | undefined
+  let timer: number
+  function check() {
+    const now = Date.now()
+    const remaining = Math.min(lastActivity + CONNECTION_IDLE_MS, lastProgress + MODEL_IDLE_MS) - now
+    if (remaining > 0) {
+      timer = window.setTimeout(check, remaining)
+    } else {
+      timeoutKey = now - lastActivity >= CONNECTION_IDLE_MS ? 'studioChat.timeout' : 'studioChat.modelTimeout'
+      controller.abort()
+    }
+  }
+  timer = window.setTimeout(check, CONNECTION_IDLE_MS)
+  return {
+    activity(progress: boolean) {
+      lastActivity = Date.now()
+      if (progress) lastProgress = lastActivity
+    },
+    stop() { window.clearTimeout(timer) },
+    get timeoutKey() { return timeoutKey }
+  }
+}
+
 export async function sendChat(retry = false) {
   const conversation = activeChat.value, selected = chatKeys.value.find(key => key.id === chatKeyId.value)
   if (!conversation || !chatReady.value || isChatRunning(conversation.id) || chatStorageError.value || chatOptionsLoading.value || !selected || !chatModels.value.includes(chatModel.value)) return
@@ -177,7 +209,7 @@ export async function sendChat(retry = false) {
   if (context.length > 200 || context.some(message => message.content.length > 32000) || context.reduce((sum, message) => sum + message.content.length, 0) > 200000) {
     chatOptionsError.value = t('studioChat.contextTooLong'); return
   }
-  const reply: StudioChatMessage = { id: studioId(), role: 'assistant', content: '', status: 'streaming', model }
+  const reply: StudioChatMessage = { id: studioId(), role: 'assistant', content: '', status: 'streaming', model, startedAt: Date.now() }
   conversation.messages = retry ? previous : [...previous, { id: studioId(), role: 'user', content: prompt, status: 'done' }]
   conversation.messages.push(reply)
   // Use the reactive proxy for token updates after the plain object was inserted.
@@ -190,32 +222,49 @@ export async function sendChat(retry = false) {
   const requestController = new AbortController()
   controllers.set(conversation.id, requestController)
   setRunning(conversation.id, true)
-  let timedOut = false
-  const timeout = window.setTimeout(() => { timedOut = true; requestController.abort() }, 300000)
+  const conversationId = conversation.id
+  let watchdog: ReturnType<typeof watchChatActivity> | undefined
+  let pendingText = ''
+  let textTimer: number | undefined
+  function flushText() {
+    window.clearTimeout(textTimer)
+    textTimer = undefined
+    if (pendingText && state.current() && !removed.has(conversationId)) responseMessage.content += pendingText
+    pendingText = ''
+  }
+  function appendText(text: string) {
+    if (requestController.signal.aborted || !state.current() || removed.has(conversationId)) return
+    const remaining = 200000 - responseMessage.content.length - pendingText.length
+    pendingText += text.slice(0, remaining)
+    if (text.length > remaining) throw new Error(t('studioChat.replyTooLong'))
+    if (!responseMessage.content) flushText()
+    else if (textTimer === undefined) textTimer = window.setTimeout(flushText, 50)
+  }
   try {
     // Save the user message before starting a potentially billable request.
     if (!await persist(conversation) || !state.current() || removed.has(conversation.id) || requestController.signal.aborted) {
       responseMessage.status = 'stopped'; return
     }
+    watchdog = watchChatActivity(requestController)
     const response = await fetch(`${window.location.origin}/api/v1/studio/chat`, {
-      method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}`, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { Accept: 'text/event-stream, application/json', Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ key_id: selected.id, model, messages: context }), signal: requestController.signal
     })
-    await readStudioChatResponse(response, text => {
-      if (!state.current() || removed.has(conversation.id) || requestController.signal.aborted) return
-      if (responseMessage.content.length + text.length > 200000) throw new Error(t('studioChat.replyTooLong'))
-      responseMessage.content += text
-    }, requestController.signal)
+    watchdog.activity(false)
+    const finishReason = await readStudioChatResponse(response, appendText, requestController.signal, watchdog.activity)
+    flushText()
     if (state.current() && !removed.has(conversation.id)) {
+      if (finishReason === 'length') throw new Error(t('studioChat.outputLimit'))
       if (!responseMessage.content) throw new Error(t('studioChat.emptyReply'))
       responseMessage.status = 'done'
     }
   } catch (error) {
     if (!state.current() || removed.has(conversation.id)) return
-    responseMessage.status = stoppedConversations.has(conversation.id) && !timedOut ? 'stopped' : 'failed'
-    if (responseMessage.status === 'failed') responseMessage.error = timedOut ? t('studioChat.timeout') : errorMessage(error)
+    responseMessage.status = stoppedConversations.has(conversation.id) && !watchdog?.timeoutKey ? 'stopped' : 'failed'
+    if (responseMessage.status === 'failed') responseMessage.error = watchdog?.timeoutKey ? t(watchdog.timeoutKey) : errorMessage(error)
   } finally {
-    window.clearTimeout(timeout)
+    watchdog?.stop()
+    flushText()
     if (state.current()) {
       if (!removed.has(conversation.id)) await persist(conversation)
       controllers.delete(conversation.id)

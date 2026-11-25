@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -123,7 +124,7 @@ func RegisterStudioAIRoutes(
 		ai.POST("/ai-prompt", bodyLimit, prepare, clientRequestID, opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
 			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
-		ai.POST("/chat", bodyLimit, prepareStudioChat(apiKeyService), clientRequestID, opsErrorLogger,
+		ai.POST("/chat", bodyLimit, prepareStudioChat(apiKeyService), clientRequestID, studioChatKeepalive(time.Duration(cfg.Gateway.StreamKeepaliveInterval)*time.Second), opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
 			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
 	}

@@ -1,7 +1,14 @@
 function textContent(value: unknown): string {
   if (typeof value === 'string') return value
   if (!Array.isArray(value)) return ''
-  return value.map(item => typeof item?.text === 'string' ? item.text : '').join('')
+  return value.map(part => {
+    if (part?.type === 'refusal' && typeof part.refusal === 'string') return part.refusal
+    return typeof part?.text === 'string' ? part.text : ''
+  }).join('')
+}
+
+function messageText(message?: { content?: unknown; refusal?: unknown }): string {
+  return textContent(message?.content) || textContent(message?.refusal)
 }
 
 function errorText(body: { error?: { message?: string } | string; message?: string }): string {
@@ -9,7 +16,12 @@ function errorText(body: { error?: { message?: string } | string; message?: stri
 }
 
 /** Parse SSE across arbitrary UTF-8 chunks, including CRLF and multiline data. */
-export async function readStudioChatResponse(response: Response, append: (text: string) => void, signal: AbortSignal): Promise<void> {
+export async function readStudioChatResponse(
+  response: Response,
+  append: (text: string) => void,
+  signal: AbortSignal,
+  onActivity?: (modelProgress: boolean) => void
+): Promise<string | undefined> {
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new Error(body ? errorText(body) : `HTTP ${response.status}`)
@@ -17,15 +29,17 @@ export async function readStudioChatResponse(response: Response, append: (text: 
   if (!response.headers.get('content-type')?.includes('text/event-stream')) {
     const body = await response.json()
     if (body.error) throw new Error(errorText(body))
-    const text = textContent(body.choices?.[0]?.message?.content)
-    if (!text) throw new Error('No text returned by the model')
+    const choice = body.choices?.[0]
+    const text = messageText(choice?.message)
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
-    append(text)
-    return
+    if (text) append(text)
+    return choice?.finish_reason
   }
   if (!response.body) throw new Error('Empty response stream')
   const reader = response.body.getReader(), decoder = new TextDecoder()
-  let pending = '', data: string[] = [], finished = false, terminal = false
+  let pending = '', data: string[] = [], finished = false, terminal = false, hasText = false
+  let finishReason: string | undefined
+  let drainTimer: number | undefined
   const abort = () => { void reader.cancel().catch(() => {}) }
   signal.addEventListener('abort', abort, { once: true })
   function event() {
@@ -35,9 +49,22 @@ export async function readStudioChatResponse(response: Response, append: (text: 
     const body = JSON.parse(raw)
     if (body.error) throw new Error(errorText(body))
     const choice = body.choices?.[0]
-    const text = textContent(choice?.delta?.content)
-    if (text) append(text)
-    if (choice?.finish_reason) finished = true
+    const delta = choice?.delta
+    const text = messageText(delta) || (!hasText ? messageText(choice?.message) : '')
+    if (text) {
+      append(text)
+      hasText = true
+    }
+    // Reasoning can precede the visible answer by minutes. Count its arrival
+    // as model progress without surfacing or persisting the reasoning itself.
+    if (text || delta?.reasoning_content || delta?.reasoning || delta?.reasoning_details?.length) onActivity?.(true)
+    if (choice?.finish_reason && !finished) {
+      finished = true
+      finishReason = choice.finish_reason
+      // Give usage and DONE time to arrive, even when the provider leaves its
+      // connection open after the terminal choice. No more text is expected.
+      drainTimer = window.setTimeout(abort, 5000)
+    }
   }
   function line(value: string) {
     if (!value) event()
@@ -48,6 +75,7 @@ export async function readStudioChatResponse(response: Response, append: (text: 
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
       const { value, done } = await reader.read()
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+      if (value?.byteLength) onActivity?.(false)
       pending += decoder.decode(value, { stream: !done })
       let index: number
       while ((index = pending.indexOf('\n')) >= 0) {
@@ -60,9 +88,13 @@ export async function readStudioChatResponse(response: Response, append: (text: 
       if (terminal) break
     }
     if (!finished) throw new Error('The reply connection ended before completion')
+    return finishReason
   } finally {
     signal.removeEventListener('abort', abort)
-    await reader.cancel().catch(() => {})
+    window.clearTimeout(drainTimer)
+    // A custom stream can leave its cancellation promise pending indefinitely.
+    // Cancel the transport, but allow the completed reply to be finalized now.
+    abort()
     reader.releaseLock()
   }
 }

@@ -14,6 +14,15 @@ function stream(text: string, chunkSize = 1) {
   const bytes = new TextEncoder().encode(text)
   return new Response(new ReadableStream({ start(controller) { for (let i = 0; i < bytes.length; i += chunkSize) controller.enqueue(bytes.slice(i, i + chunkSize)); controller.close() } }), { headers: { 'content-type': 'text/event-stream' } })
 }
+function openChatStream() {
+  const encoder = new TextEncoder()
+  let sink: ReadableStreamDefaultController<Uint8Array>
+  const cancel = vi.fn()
+  const response = new Response(new ReadableStream<Uint8Array>({
+    start(controller) { sink = controller }, cancel
+  }), { headers: { 'content-type': 'text/event-stream' } })
+  return { response, cancel, write: (text: string) => sink.enqueue(encoder.encode(text)) }
+}
 const delta = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
 const jsonReply = (content = 'Reply') => Response.json({ choices: [{ message: { content } }] })
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes }); return { promise, resolve } }
@@ -25,7 +34,7 @@ beforeEach(() => {
   h.models.mockReset().mockResolvedValue(['chat-model', 'other-model'])
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonReply()))
 })
-afterEach(() => { window.dispatchEvent(new Event('studio-session-ended')); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { window.dispatchEvent(new Event('studio-session-ended')); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('chat response parsing', () => {
   it('joins split UTF-8, CRLF, comments and multiple data lines', async () => {
@@ -50,6 +59,36 @@ describe('chat response parsing', () => {
     const append = vi.fn()
     await readStudioChatResponse(Response.json({ choices: [{ message: { content: [{ type: 'text', text: 'Hello' }] } }] }), append, new AbortController().signal)
     expect(append).toHaveBeenCalledWith('Hello')
+  })
+  it('accepts a complete chat response after SSE keepalives without duplicating streamed text', async () => {
+    const snapshot = `data: ${JSON.stringify({ choices: [{ message: { content: '完整答案' } }] })}\n\n`
+    for (const preceding of [': waiting\n\n', delta('完整答案')]) {
+      const append = vi.fn()
+      await readStudioChatResponse(stream(preceding + snapshot + 'data: [DONE]\n\n'), append, new AbortController().signal)
+      expect(append.mock.calls).toEqual([['完整答案']])
+    }
+  })
+  it('finishes a completed choice even when the provider keeps its connection open', async () => {
+    vi.useFakeTimers()
+    const upstream = openChatStream()
+    const pending = readStudioChatResponse(upstream.response, vi.fn(), new AbortController().signal)
+    upstream.write(delta('answer') + 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n')
+    await vi.advanceTimersByTimeAsync(6000)
+    await pending
+    expect(upstream.cancel).toHaveBeenCalledOnce()
+  })
+  it('surfaces refusal text from streaming deltas, final messages, and JSON content parts', async () => {
+    const responses = [
+      stream('data: {"choices":[{"delta":{"refusal":"Unavailable"}}]}\n\ndata: [DONE]\n\n'),
+      stream('data: {"choices":[{"message":{"content":null,"refusal":"Unavailable"}}]}\n\ndata: [DONE]\n\n'),
+      Response.json({ choices: [{ message: { refusal: 'Unavailable' } }] }),
+      Response.json({ choices: [{ message: { content: [{ type: 'refusal', refusal: 'Unavailable' }] } }] })
+    ]
+    for (const response of responses) {
+      const append = vi.fn()
+      await readStudioChatResponse(response, append, new AbortController().signal)
+      expect(append.mock.calls).toEqual([['Unavailable']])
+    }
   })
   it('retains partial text but rejects an incomplete stream', async () => {
     const append = vi.fn()
@@ -187,6 +226,95 @@ describe('studio chat workflow', () => {
     engine.activeChat.value!.draft = 'Continue'; await engine.sendChat()
     const body = JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)
     expect(body.messages[1]).toEqual({ role: 'assistant', content: 'Partial reply' })
+  })
+  it('continues past five minutes during reasoning and coalesces rapid text deltas', async () => {
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const upstream = openChatStream()
+    vi.mocked(fetch).mockResolvedValue(upstream.response)
+    engine.activeChat.value!.draft = 'A complex question'
+    const sending = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    const reply = engine.activeChat.value!.messages.at(-1)!
+    const minute = 60_000
+    // Longer than both timeout windows in total, but reasoning is progressing.
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(4 * minute)
+      upstream.write('data: {"choices":[{"delta":{"reasoning_content":"private"}}]}\n\n')
+      await vi.advanceTimersByTimeAsync(1)
+    }
+    expect(reply).toMatchObject({ content: '', status: 'streaming' })
+    upstream.write(delta('第一'))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(reply.content).toBe('第一')
+    upstream.write(delta('段') + delta('文字'))
+    await vi.advanceTimersByTimeAsync(1)
+    expect(reply.content).toBe('第一')
+    upstream.write('data: [DONE]\n\n')
+    await sending
+    expect(reply).toMatchObject({ content: '第一段文字', status: 'done' })
+    expect(engine.chatBusy.value).toBe(false)
+    expect(JSON.stringify(await loadStudioChatHistory('user-1', () => true))).not.toContain('private')
+  })
+  it('releases a stalled run and keeps partial text even if heartbeats continue', async () => {
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const upstream = openChatStream()
+    vi.mocked(fetch).mockResolvedValue(upstream.response)
+    engine.activeChat.value!.draft = 'Heartbeat-only stall'
+    const sending = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    upstream.write(delta('partial'))
+    await vi.advanceTimersByTimeAsync(1)
+    for (let i = 0; i < 5; i++) {
+      upstream.write(': ping\n\n')
+      await vi.advanceTimersByTimeAsync(3 * 60_000)
+    }
+    await sending
+    expect(engine.activeChat.value!.messages.at(-1)).toMatchObject({ status: 'failed', content: 'partial', error: 'studioChat.modelTimeout' })
+    expect(engine.chatBusy.value).toBe(false)
+    expect(upstream.cancel).toHaveBeenCalledOnce()
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it('times out a silent connection independently of a concurrent chat', async () => {
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const silent = openChatStream(), live = openChatStream()
+    vi.mocked(fetch).mockResolvedValueOnce(silent.response).mockResolvedValueOnce(live.response)
+    const first = engine.activeChat.value!
+    first.draft = 'Stalled request'
+    const stalled = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    engine.newChat()
+    const second = engine.activeChat.value!
+    second.draft = 'Healthy request'
+    const healthy = engine.sendChat()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    await vi.advanceTimersByTimeAsync(4 * 60_000)
+    live.write(': still working\n\n')
+    await vi.advanceTimersByTimeAsync(60_001)
+    await stalled
+    expect(first.messages.at(-1)).toMatchObject({ status: 'failed', error: 'studioChat.timeout' })
+    expect(engine.isChatRunning(second.id)).toBe(true)
+    live.write(delta('done') + 'data: [DONE]\n\n')
+    await healthy
+    expect(second.messages.at(-1)).toMatchObject({ status: 'done', content: 'done' })
+  })
+  it.each(['stream', 'json'])('explains an exhausted output budget and keeps the partial reply for %s', async type => {
+    const choice = { content: 'partial' }
+    const response = type === 'json'
+      ? Response.json({ choices: [{ message: choice, finish_reason: 'length' }] })
+      : stream(delta('par') + delta('tial') + 'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')
+    vi.mocked(fetch).mockResolvedValue(response)
+    const engine = await import('../useStudioChat')
+    await engine.initStudioChat()
+    engine.activeChat.value!.draft = 'Complex question'
+    await engine.sendChat()
+    expect(engine.activeChat.value!.messages.at(-1)).toMatchObject({ status: 'failed', content: 'partial', error: 'studioChat.outputLimit' })
+    expect(fetch).toHaveBeenCalledOnce()
   })
   it('requires an explicit retry and does not duplicate the user message', async () => {
     const engine = await import('../useStudioChat'); await engine.initStudioChat()

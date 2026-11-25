@@ -35,6 +35,7 @@ export default {
     "you": "你",
     "assistant": "助手",
     "thinking": "正在等待回复…",
+    "waitingElapsed": "已等待 {seconds} 秒",
     "stopped": "回复已停止，已保留现有内容。",
     "requestFailed": "回复失败，请检查密钥或稍后重试。",
     "copy": "复制消息",
@@ -60,8 +61,10 @@ export default {
     "loadFailed": "无法读取聊天记录，请允许浏览器存储后重试。",
     "contextTooLong": "这段对话内容过长，请新建对话后继续。",
     "replyTooLong": "回复过长，已保留现有内容。",
+    "outputLimit": "模型已达到输出上限。可以缩小问题范围后再试。",
     "emptyReply": "模型没有返回文字内容，请尝试其他模型。",
-    "timeout": "等待回复超时，已保留现有内容。",
+    "timeout": "连接连续 5 分钟没有收到数据，已保留收到的回复。",
+    "modelTimeout": "模型连续 15 分钟没有返回新内容，已保留收到的回复。",
     "examples": {
         "brainstorm": {
             "title": "一起想创意",

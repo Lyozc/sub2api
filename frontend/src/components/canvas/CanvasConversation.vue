@@ -33,24 +33,23 @@
             </div>
           </div>
           <div v-else class="chat-message-list">
-          <article v-for="(message, index) in activeChat.messages" :key="message.id" class="chat-message" :class="`is-${message.role}`" :data-testid="`chat-${message.role}-message`">
-            <div class="chat-message-heading"><span class="chat-avatar" aria-hidden="true"><Icon :name="message.role === 'user' ? 'user' : 'sparkles'" size="xs" /></span><strong>{{ message.role === 'user' ? t('studioChat.you') : message.model || t('studioChat.assistant') }}</strong><span v-if="message.status === 'streaming'" class="chat-stream-dot" :aria-label="t('studioChat.replying')"></span></div>
-            <div v-if="message.role === 'assistant' && message.content" v-show="!htmlPreview[message.id]" class="chat-markdown" v-html="renderMarkdown(message.content)"></div>
-            <p v-else-if="message.content" class="chat-user-text">{{ message.content }}</p>
-            <p v-else-if="message.status === 'streaming'" class="studio-note">{{ t('studioChat.thinking') }}</p>
-            <p v-if="message.status === 'stopped'" class="chat-message-note">{{ t('studioChat.stopped') }}</p>
-            <p v-if="message.status === 'failed'" class="chat-message-error" role="alert">{{ message.error || t('studioChat.requestFailed') }}</p>
-            <div v-if="message.content || message.status === 'failed' || message.status === 'stopped'" class="chat-message-actions">
-              <button v-if="message.content" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-label="t('studioChat.copy')" @click="copy(message.content)"><Icon name="copy" size="xs" />{{ copied === message.content ? t('studioChat.copied') : t('studioChat.copy') }}</button>
-              <button v-if="message.role === 'assistant' && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlPreview[message.id] === true" @click="toggleHtmlPreview(message.id)"><Icon name="eye" size="xs" />{{ htmlPreview[message.id] ? t('studioChat.showHtmlCode') : t('studioChat.previewHtml') }}</button>
-              <button v-if="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" type="button" class="studio-btn studio-btn--quiet studio-btn--sm" :aria-pressed="htmlZoomId === message.id" @click="toggleHtmlZoom(message.id, $event)"><Icon name="arrowsUpDown" size="xs" />{{ htmlZoomId === message.id ? t('studioChat.exitHtmlZoom') : t('studioChat.zoomHtml') }}</button>
-              <button v-if="message.role === 'assistant' && ['failed', 'stopped'].includes(message.status) && index === activeChat.messages.length - 1" type="button" class="studio-btn studio-btn--ghost studio-btn--sm" :title="t('studioChat.retryHint')" :disabled="chatActiveBusy || !!chatStorageError" @click="sendChat(true)"><Icon name="refresh" size="xs" />{{ t('studioChat.retryReply') }}</button>
-            </div>
-            <div v-if="htmlPreviewCreated[message.id]" :ref="element => registerHtmlFrame(message.id, element)" v-show="message.role === 'assistant' && htmlPreview[message.id] && extractStudioChatHtml(message.content)" class="chat-html-frame" :class="htmlZoomId === message.id ? 'is-zoomed' : ''" :role="htmlZoomId === message.id ? 'dialog' : undefined" :aria-modal="htmlZoomId === message.id ? true : undefined" :aria-label="htmlZoomId === message.id ? t('studioChat.htmlPreview') : undefined" tabindex="-1">
-              <button v-if="htmlZoomId === message.id" type="button" class="studio-btn studio-btn--ghost studio-btn--sm chat-html-exit" @click="exitHtmlZoom()"><Icon name="x" size="xs" />{{ t('studioChat.exitHtmlZoom') }}</button>
-              <iframe class="chat-html-preview" :srcdoc="studioChatHtmlDocument(message.content)" :title="t('studioChat.htmlPreview')" sandbox="allow-scripts" referrerpolicy="no-referrer" tabindex="0"></iframe>
-            </div>
-          </article>
+            <StudioChatMessageRow
+              v-for="(message, index) in activeChat.messages"
+              :key="message.id"
+              :message="message"
+              :last="index === activeChat.messages.length - 1"
+              :retry-disabled="chatActiveBusy || !!chatStorageError"
+              :copied="copied === message.id"
+              :preview-visible="!!htmlPreview[message.id]"
+              :preview-created="!!htmlPreviewCreated[message.id]"
+              :zoomed="htmlZoomId === message.id"
+              @copy="copy(message.id, message.content)"
+              @toggle-preview="toggleHtmlPreview(message.id)"
+              @toggle-zoom="toggleHtmlZoom(message.id, $event)"
+              @exit-zoom="exitHtmlZoom"
+              @frame="registerHtmlFrame(message.id, $event)"
+              @retry="sendChat(true)"
+            />
           </div>
         </div>
         <button v-if="!atBottom && activeChat?.messages.length" type="button" class="studio-icon-btn chat-latest" :aria-label="t('studioChat.latest')" :title="t('studioChat.latest')" @click="scrollToBottom"><Icon name="arrowDown" size="sm" /></button>
@@ -76,11 +75,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import Icon from '@/components/icons/Icon.vue'
 import StudioChatHistory from './StudioChatHistory.vue'
-import { extractStudioChatHtml, studioChatHtmlDocument } from './studioChatHtml'
+import StudioChatMessageRow from './StudioChatMessageRow.vue'
 import { useAppStore } from '@/stores/app'
 import { useStudioDialog } from '@/composables/useStudioDialog'
 import { activeChat, chatActiveBusy, chatActiveId, chatBusy, chatKeyId, chatKeys, chatModel, chatModels, chatOptionsError, chatOptionsLoading, chatReady, chatRunningIds, chatStorageError, initStudioChat, newChat, refreshChatOptions, reloadChatHistory, retryChatSave, saveChatDraft, selectChat, selectChatKey, selectChatModel, sendChat, stopChat } from '@/composables/useStudioChat'
@@ -100,12 +97,6 @@ useStudioDialog(historyDialog, () => { historyOpen.value = false }, historyOpen)
 const draft = computed({ get: () => activeChat.value?.draft || '', set: value => { if (activeChat.value) activeChat.value.draft = value } })
 const backgroundChatId = computed(() => chatRunningIds.value.find(id => id !== chatActiveId.value) || '')
 const canSend = computed(() => chatReady.value && !chatActiveBusy.value && !chatOptionsLoading.value && !chatStorageError.value && !!chatKeyId.value && chatModels.value.includes(chatModel.value) && !!draft.value.trim())
-function renderMarkdown(text: string) {
-  return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }), {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'a', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
-    ALLOWED_ATTR: ['href', 'title', 'class'], ALLOW_DATA_ATTR: false
-  })
-}
 function toggleHtmlPreview(messageId: string) {
   htmlPreviewCreated.value[messageId] = true
   htmlPreview.value[messageId] = !htmlPreview.value[messageId]
@@ -133,16 +124,21 @@ function exitHtmlZoom() {
 function trackScroll() { const element = scroller.value; if (element) atBottom.value = element.scrollHeight - element.scrollTop - element.clientHeight < 90 }
 function scrollToBottom() { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight; atBottom.value = true }
 watch(() => [chatActiveId.value, activeChat.value?.messages.length], async () => { await nextTick(); scrollToBottom() }, { flush: 'post', immediate: true })
-watch(() => activeChat.value?.messages.at(-1)?.content, async () => { if (atBottom.value) { await nextTick(); scrollToBottom() } }, { flush: 'post' })
+watch([
+  () => activeChat.value?.messages.at(-1)?.content,
+  () => activeChat.value?.messages.at(-1)?.status
+], async () => {
+  if (atBottom.value) { await nextTick(); scrollToBottom() }
+}, { flush: 'post' })
 function onKeydown(event: KeyboardEvent) { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (canSend.value) void sendChat() } }
 function applyExample(key: 'brainstorm' | 'write' | 'explain') { draft.value = t(`studioChat.examples.${key}.prompt`); input.value?.focus() }
 async function reloadHistory() { if (!window.confirm(t('studioChat.reloadConfirm'))) return; await reloadChatHistory() }
-async function copy(text: string) {
+async function copy(id: string, text: string) {
   let element: HTMLTextAreaElement | undefined
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
     else { element = document.createElement('textarea'); element.value = text; element.style.position = 'fixed'; element.style.opacity = '0'; document.body.append(element); element.select(); if (!document.execCommand('copy')) throw new Error('Copy failed') }
-    copied.value = text
+    copied.value = id
   } catch { app.showError(t('common.copyFailed')) }
   finally { element?.remove() }
 }
@@ -194,21 +190,6 @@ onUnmounted(() => messageResize?.disconnect())
 .chat-examples button > svg { flex-shrink: 0; color: var(--st-accent); }
 .chat-no-key { margin-top: 20px; display: grid; gap: 12px; justify-items: center; color: var(--st-text-soft); font-size: 13px; }
 .chat-message-list { display: flex; flex-direction: column; gap: 20px; max-width: 832px; margin: 0 auto; }
-.chat-message { min-width: 0; }
-.chat-message-heading { display: flex; align-items: center; gap: 6px; min-height: 28px; margin-bottom: 6px; color: var(--st-muted); font-size: 11px; }
-.chat-message-heading strong { font-weight: 500; }
-.chat-avatar { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--st-border); border-radius: 50%; background: var(--st-panel); color: var(--st-text-soft); }
-.chat-message.is-user { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; max-width: min(100%, 38rem); }
-.chat-message.is-user .chat-message-heading { flex-direction: row-reverse; }
-.chat-message.is-user .chat-avatar { border-color: transparent; background: var(--st-accent-soft); color: var(--st-accent-text); }
-.chat-user-text { padding: 10px 14px; border-radius: 18px 4px 18px 18px; background: var(--st-accent-soft); color: var(--st-text); box-shadow: none; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.75; }
-
-.chat-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.chat-message.is-user .chat-message-actions { justify-content: flex-end; }
-.chat-message-note, .chat-message-error { margin-top: 10px; font-size: 12px; overflow-wrap: anywhere; }
-.chat-message-note { color: var(--st-muted); }
-.chat-message-error { color: var(--st-danger); }
-.chat-stream-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--st-accent); animation: pulse 1s infinite; }
 .text-chat-composer { position: relative; flex-shrink: 0; padding: 4px 16px 12px; }
 .text-chat-composer::before { content: ''; pointer-events: none; position: absolute; inset: -24px 0 auto; height: 24px; background: linear-gradient(to top, var(--st-panel), transparent); }
 .chat-composer-content { max-width: 768px; margin-inline: auto; }
@@ -234,25 +215,6 @@ onUnmounted(() => messageResize?.disconnect())
 .chat-history-overlay { position: fixed; inset: 0; z-index: 260; padding: 12px; background: #0f172a80; }
 .chat-history-drawer { height: 100%; max-height: calc(100dvh - 24px); width: min(352px, 88vw); display: flex; flex-direction: column; padding: 12px; box-shadow: var(--st-shadow-lg); }
 .chat-examples button:focus-visible, .chat-submit:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 2px; }
-.chat-markdown { font-size: 14px; line-height: 1.85; color: var(--st-text); overflow-wrap: anywhere; }
-.chat-markdown :deep(p), .chat-markdown :deep(ul), .chat-markdown :deep(ol), .chat-markdown :deep(blockquote) { margin: 0 0 12px; }
-.chat-markdown :deep(ul), .chat-markdown :deep(ol) { padding-left: 22px; list-style: revert; }
-.chat-markdown :deep(pre) { max-width: 100%; overflow: auto; padding: 14px; margin: 12px 0; background: var(--st-surface); border: 1px solid var(--st-border); border-radius: 12px; white-space: pre; font-size: 12px; }
-.chat-markdown :deep(code) { padding: 2px 4px; background: var(--st-surface); border-radius: 4px; font-size: .9em; }
-.chat-markdown :deep(pre code) { padding: 0; }
-.chat-markdown :deep(a) { color: var(--st-accent-text); text-decoration: underline; }
-.chat-markdown :deep(blockquote) { border-left: 3px solid var(--st-accent-border); padding-left: 12px; color: var(--st-text-soft); }
-.chat-markdown :deep(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin-bottom: 12px; }
-.chat-markdown :deep(td), .chat-markdown :deep(th) { border: 1px solid var(--st-border); padding: 6px 10px; }
-.chat-markdown :deep(h1), .chat-markdown :deep(h2), .chat-markdown :deep(h3) { font-weight: 700; margin: 16px 0 8px; }
-.chat-html-frame { position: relative; margin-top: 12px; }
-.chat-html-preview { display: block; width: 100%; min-height: 360px; border: 1px solid var(--st-border); border-radius: 12px; background: #fff; }
-/* 放大预览:组件内固定定位,不使用原生 Fullscreen API,iframe 不重建 */
-.chat-html-frame.is-zoomed { position: fixed; inset: 0; z-index: 120; margin: 0; padding: 48px 12px 12px; background: #020617e6; }
-.chat-html-frame.is-zoomed .chat-html-preview { height: 100%; min-height: 0; border-radius: 12px; }
-.chat-html-exit { position: absolute; top: 10px; right: 12px; z-index: 1; }
-
-@keyframes pulse { 50% { opacity: .25; } }
 @media (max-width: 1023px) {
   .text-chat-sidebar, .text-chat-sidebar-toggle { display: none; }
   .text-chat-history-toggle { display: inline-grid; }
@@ -269,5 +231,5 @@ onUnmounted(() => messageResize?.disconnect())
   .chat-composer-bottom > span { font-size: 10px; }
 }
 @media (max-height: 700px) { .chat-composer-note { display: none; } }
-@media (prefers-reduced-motion: reduce) { .chat-stream-dot { animation: none; } }
+
 </style>

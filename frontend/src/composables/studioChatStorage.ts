@@ -6,6 +6,7 @@ export interface StudioChatMessage {
   content: string
   status: 'done' | 'streaming' | 'stopped' | 'failed'
   model?: string
+  startedAt?: number
   error?: string
 }
 export interface StudioChatConversation {

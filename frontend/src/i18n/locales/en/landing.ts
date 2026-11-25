@@ -35,6 +35,7 @@ export default {
     "you": "You",
     "assistant": "Assistant",
     "thinking": "Waiting for a reply…",
+    "waitingElapsed": "{seconds}s elapsed",
     "stopped": "Reply stopped. Existing text has been kept.",
     "requestFailed": "Reply failed. Check your key or try again later.",
     "copy": "Copy message",
@@ -60,8 +61,10 @@ export default {
     "loadFailed": "Unable to read chat history. Allow browser storage and retry.",
     "contextTooLong": "This conversation is too long. Start a new chat to continue.",
     "replyTooLong": "The reply is too long. Existing text has been kept.",
+    "outputLimit": "The model reached its output limit. Try narrowing the question.",
     "emptyReply": "The model returned no text. Try a different model.",
-    "timeout": "The reply timed out. Existing text has been kept.",
+    "timeout": "No data arrived for 5 minutes. Any reply text has been kept.",
+    "modelTimeout": "The model made no progress for 15 minutes. Any reply text has been kept.",
     "examples": {
         "brainstorm": {
             "title": "Brainstorm ideas",
