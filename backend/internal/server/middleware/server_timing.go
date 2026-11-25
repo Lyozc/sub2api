@@ -113,6 +113,12 @@ func ServerTimingResponseHeader(c *gin.Context) http.Header {
 }
 
 func shouldCollectServerTiming(c *gin.Context) bool {
+	// Studio's SSE heartbeat can commit headers while the gateway is still
+	// working. Finalizing a timing snapshot on the heartbeat goroutine would
+	// access the request's Gin context concurrently with that work.
+	if c != nil && c.Request != nil && c.Request.URL.Path == "/api/v1/studio/chat" && strings.Contains(c.GetHeader("Accept"), "text/event-stream") {
+		return false
+	}
 	return isAdminUIRequest(c) || isUserUIRequest(c)
 }
 

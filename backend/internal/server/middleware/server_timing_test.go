@@ -256,3 +256,13 @@ func TestServerTimingResponseHeaderForWebSocket(t *testing.T) {
 		t.Fatalf("non-admin WebSocket received timing header: %#v", got)
 	}
 }
+
+func TestServerTimingSkipsStudioEventStream(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/api/v1/studio/chat", nil)
+	c.Request.Header.Set(servertiming.AdminUIHeader, "1")
+	c.Request.Header.Set("Accept", "text/event-stream, application/json")
+	if shouldCollectServerTiming(c) {
+		t.Fatal("SSE heartbeat must not finalize the timing writer concurrently with gateway work")
+	}
+}
