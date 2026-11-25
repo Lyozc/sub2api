@@ -69,30 +69,13 @@
           </div>
 
           <!-- 空态 -->
-          <div v-if="loaded && !turns.length && !polishing" class="flex min-h-[46vh] flex-col items-center justify-center px-2 py-8 text-center sm:px-4">
-            <span class="studio-empty-mark" aria-hidden="true"><Icon name="chat" size="lg" /></span>
-            <h1 class="studio-empty-title !text-[clamp(1.25rem,3.2vw,1.65rem)]">{{ t('canvasChat.emptyTitle') }}</h1>
-            <p class="studio-empty-text">{{ t('canvasChat.emptyDesc') }}</p>
-            <div class="mt-7 w-full max-w-xl">
-              <div class="mb-2.5 flex items-center gap-2.5" aria-hidden="true">
-                <span class="h-px flex-1 bg-[var(--st-border)]"></span>
-                <span class="text-[11px] font-semibold text-[var(--st-muted)]">{{ t('canvasChat.tryExamples') }}</span>
-                <span class="h-px flex-1 bg-[var(--st-border)]"></span>
-              </div>
-              <ul class="m-0 grid list-none gap-2 p-0">
-                <li v-for="ex in examples" :key="ex" class="min-w-0">
-                  <button
-                    type="button"
-                    class="group/ex flex w-full items-center gap-2.5 rounded-xl border border-[var(--st-border)] bg-[var(--st-panel)] px-3 py-2.5 text-left text-[12.5px] leading-[1.6] text-[var(--st-text-soft)] transition-colors hover:border-[var(--st-accent-border)] hover:text-[var(--st-text)]"
-                    @click="composer?.setText(ex)"
-                  >
-                    <Icon name="sparkles" size="xs" class="shrink-0 text-[var(--st-accent-text)]" aria-hidden="true" />
-                    <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{{ ex }}</span>
-                    <Icon name="arrowRight" size="xs" class="shrink-0 text-[var(--st-muted)] transition-colors group-hover/ex:text-[var(--st-accent-text)]" aria-hidden="true" />
-                  </button>
-                </li>
-              </ul>
+          <div v-if="loaded && !turns.length && !polishing" class="studio-start">
+            <div class="studio-start-heading">
+              <span class="studio-start-icon" aria-hidden="true"><Icon name="sparkles" size="lg" /></span>
+              <h1>{{ t('canvasChat.emptyTitle') }}</h1>
             </div>
+            <p class="studio-start-hint">{{ t('canvasChat.emptyDesc') }}</p>
+            <StudioPromptSuggestions :label="t('canvasChat.tryExamples')" :options="examples" @pick="applyExample" />
           </div>
 
           <template v-for="(turn, ti) in turns" :key="turn.id">
@@ -226,6 +209,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import dawn from '@/assets/studio/dawn.webp'
+import forest from '@/assets/studio/forest.webp'
+import aurora from '@/assets/studio/aurora.webp'
+import StudioPromptSuggestions from './StudioPromptSuggestions.vue'
 import ChatDrawHistory from './chatdraw/ChatDrawHistory.vue'
 import ChatDrawComposer from './chatdraw/ChatDrawComposer.vue'
 import ChatDrawLightbox from './chatdraw/ChatDrawLightbox.vue'
@@ -233,7 +220,7 @@ import { aspectOf, dayKey, dayLabel, qualityLabelOf, singleImageWidth, type Ligh
 import { useAppStore } from '@/stores/app'
 import {
   MAX_REFS, LOAD_LIMIT,
-  turns, draftRefs, polishEnabled, polishing, loaded, hasOlder, busy, initError,
+  turns, draftText, draftRefs, polishEnabled, polishing, loaded, hasOlder, busy, initError,
   sessions, activeSessionId, activeSession, sessionNotices, runningSessionIds, totalImages,
   initChatDraw, newSession, selectSession, renameSession, deleteSession, clearAllSessions,
   addImageAsRef, redrawTurn, variantOf, retryImage, deleteTurn, clearConversation,
@@ -308,7 +295,15 @@ const drawerHandlers = {
 }
 
 // ===== 顶栏 =====
-const examples = computed(() => [t('canvasChat.example1'), t('canvasChat.example2'), t('canvasChat.example3')])
+const examples = computed(() => [
+  { title: t('canvasChat.exampleDawn'), prompt: t('canvasChat.example1'), image: dawn },
+  { title: t('canvasChat.exampleForest'), prompt: t('canvasChat.example2'), image: forest },
+  { title: t('canvasChat.exampleAurora'), prompt: t('canvasChat.example3'), image: aurora }
+])
+function applyExample(prompt: string) {
+  if (draftText.value.trim() && draftText.value !== prompt && !window.confirm(t('canvas.replaceDraftConfirm', { destination: t('canvas.tabChat') }))) return
+  composer.value?.setText(prompt)
+}
 const subtitle = computed(() => {
   if (!loaded.value) return t('canvasChat.loading')
   if (polishing.value) return t('canvas.aiPrompting')

@@ -533,6 +533,10 @@ select.vpc-number-input option { background: var(--_surface); color: var(--_text
 .vpc-number-input[aria-invalid="true"] { outline: 1px solid var(--vs-danger, #ef4444); }
 .vpc-unit { color: var(--_secondary); font-size: 13px; }
 
+@media (max-width: 640px) {
+  .vpc-segment { min-height: 44px; }
+  .vpc-ratio { min-height: 64px; }
+}
 @media (max-width: 360px) {
   .vpc-duration { gap: 10px; }
   .vpc-ratio { min-height: 62px; }

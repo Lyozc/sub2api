@@ -61,7 +61,7 @@
             :class="{ selected: viewMode === 'preview' && previewTask?.taskId === task.taskId }"
             :aria-current="viewMode === 'preview' && previewTask?.taskId === task.taskId ? 'true' : undefined"
             :aria-label="`${L.previewTask}: ${task.prompt}`"
-            @click="selectPreview(task)"
+            @click="openRailPreview(task)"
           >
             <span class="rail-status" :class="task.status" aria-hidden="true"
               ><Icon
@@ -86,6 +86,7 @@
     <template #header>
       <div class="results-header">
         <button
+          ref="railToggle"
           type="button"
           class="icon-button"
           :aria-label="railCollapsed ? L.expandRail : L.collapseRail"
@@ -342,6 +343,15 @@
                 :labels="parameterLabels"
               />
             </div>
+            <template #footer="{ close }">
+              <div class="output-footer">
+                <div class="cost-estimate">
+                  <strong>{{ estimatedCost }}</strong>
+                  <small v-if="estimateBreakdown">{{ estimateBreakdown }}</small>
+                </div>
+                <button type="button" class="output-close" @click="close(true)">{{ t('common.close') }}</button>
+              </div>
+            </template>
           </WorkbenchPopover>
 
           <WorkbenchPopover :label="L.advanced" :width="360">
@@ -886,6 +896,7 @@ watch(
 function startNew() {
   newVideoConversation()
   contextTaskId.value = null
+  if (compactViewport.matches) railCollapsed.value = true
   void nextTick(() => promptInput.value?.focus())
 }
 function setCreationMode(value: 't2v' | 'i2v') {
@@ -962,6 +973,7 @@ const viewMode = ref<'gallery' | 'preview'>('gallery')
 const previewTaskId = ref<number | null>(null)
 const compactViewport = window.matchMedia('(max-width: 860px)')
 const railCollapsed = ref(compactViewport.matches)
+const railToggle = ref<HTMLButtonElement>()
 function onCompactViewport(event: MediaQueryListEvent) { if (event.matches) railCollapsed.value = true }
 const fullscreen = ref(false)
 const fileInput = ref<HTMLInputElement>()
@@ -972,6 +984,13 @@ const previewTask = computed(
 function selectPreview(task: VideoTask) {
   previewTaskId.value = task.taskId
   viewMode.value = 'preview'
+}
+function openRailPreview(task: VideoTask) {
+  selectPreview(task)
+  if (compactViewport.matches) {
+    railCollapsed.value = true
+    void nextTick(() => railToggle.value?.focus())
+  }
 }
 function onRailKeydown(event: KeyboardEvent) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
@@ -1635,6 +1654,31 @@ textarea::placeholder {
 .settings-panel :deep(.vpc-section:first-child) {
   padding-top: 0;
 }
+.output-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.output-footer .cost-estimate {
+  text-align: start;
+  font-size: 12px;
+}
+.output-footer .cost-estimate small {
+  font-size: 11px;
+}
+.output-close {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--vs-accent-border);
+  border-radius: 9px;
+  background: var(--vs-accent-soft);
+  color: var(--vs-accent-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.output-close:hover { border-color: var(--vs-focus); }
 .settings-note {
   color: var(--vs-muted);
   font-size: 11px;

@@ -61,32 +61,32 @@
               />
             </button>
             <video v-else :src="item.url" controls preload="metadata" class="aspect-video w-full bg-black object-contain"></video>
-            <span class="asset-kind" :class="item.kind === 'image' ? 'is-image' : 'is-video'">{{
-              item.kind === 'image' ? t('canvas.kindImage') : t('canvas.kindVideo')
-            }}</span>
-            <div class="asset-overlay">
-              <a :href="item.url" :download="item.download" class="asset-action" :title="t('imageStudio.download')" :aria-label="t('imageStudio.download')">
-                <Icon name="download" size="xs" aria-hidden="true" />
-                <span class="asset-action-text">{{ t('imageStudio.download') }}</span>
-              </a>
-              <button
-                type="button"
-                class="asset-action is-danger"
-                :title="t('common.delete')"
-                :aria-label="t('common.delete')"
-                @click="item.remove()"
-              >
-                <Icon name="trash" size="xs" aria-hidden="true" />
-                <span class="asset-action-text">{{ t('common.delete') }}</span>
-              </button>
-            </div>
           </div>
           <figcaption class="asset-caption">
             <span class="asset-caption-prompt" :title="item.prompt || t('canvas.assetsNoPrompt')">{{ item.prompt || t('canvas.assetsNoPrompt') }}</span>
             <span class="asset-caption-meta">
+              <span class="asset-kind">{{ t(item.kind === 'image' ? 'canvas.kindImage' : 'canvas.kindVideo') }}</span>
               <span v-if="item.model" class="asset-caption-model" :title="item.model">{{ item.model }}</span>
               <time :datetime="new Date(item.ts).toISOString()">{{ formatTime(item.ts) }}</time>
             </span>
+            <div class="asset-actions">
+              <button
+                v-if="item.prompt?.trim()"
+                type="button"
+                class="studio-btn studio-btn--accent-soft studio-btn--sm"
+                @click="fillPrompt(item.kind, item.prompt)"
+              ><Icon name="edit" size="xs" aria-hidden="true" />{{ t('canvas.reusePrompt') }}</button>
+              <a :href="item.url" :download="item.download" class="studio-icon-btn ml-auto" :title="t('imageStudio.download')" :aria-label="t('imageStudio.download')">
+                <Icon name="download" size="xs" aria-hidden="true" />
+              </a>
+              <button
+                type="button"
+                class="studio-icon-btn asset-delete"
+                :title="t('common.delete')"
+                :aria-label="t('common.delete')"
+                @click="item.remove()"
+              ><Icon name="trash" size="xs" aria-hidden="true" /></button>
+            </div>
           </figcaption>
         </figure>
       </div>
@@ -143,6 +143,7 @@ import { imageFileExtension } from '@/composables/studioMedia'
 import StudioLegacyHistory from './StudioLegacyHistory.vue'
 import { loadHistory as loadImageHistory } from '@/composables/useImageStudioEngine'
 import { activeTab } from '@/composables/useInfiniteCanvas'
+import { useStudioPromptHandoff } from '@/composables/useStudioPromptHandoff'
 import {
   history as videoHistory, historyVideoUrl, deleteHistory as deleteVideoHistory,
   loadHistory as loadVideoHistory,
@@ -150,6 +151,7 @@ import {
 import './studio-shell.css'
 
 const { t, locale } = useI18n()
+const { fillPrompt } = useStudioPromptHandoff()
 const { items: imageHistory, objectUrlFor: imageObjectUrl } = useStudioImageAssets()
 
 const KIND_FILTERS = ['all', 'image', 'video'] as const
@@ -238,15 +240,10 @@ onUnmounted(() => {
 <style scoped>
 .asset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13.5rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
   align-content: start;
   align-items: start;
   gap: 12px;
-}
-@media (max-width: 420px) {
-  .asset-grid {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
-  }
 }
 .asset-card {
   margin: 0;
@@ -278,65 +275,26 @@ onUnmounted(() => {
   background: none;
   cursor: zoom-in;
 }
-.asset-open:focus-visible,
-.asset-action:focus-visible {
+.asset-open:focus-visible {
   outline: 2px solid var(--st-focus);
   outline-offset: -2px;
 }
-.asset-kind {
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(8, 13, 24, 0.68);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  pointer-events: none;
-}
-.asset-kind.is-video {
-  background: rgba(76, 29, 149, 0.78);
-}
-.asset-overlay {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
+.asset-actions {
   display: flex;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px;
-  background: linear-gradient(to top, rgba(8, 13, 24, 0.78), transparent);
-}
-.asset-action {
-  display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #1f2937;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
+  gap: 6px;
+  padding-top: 6px;
 }
-.asset-action:hover {
-  background: #fff;
-}
-.asset-action.is-danger {
-  color: #b91c1c;
+.asset-actions .asset-delete:hover {
+  border-color: var(--st-danger-border);
+  color: var(--st-danger);
 }
 .asset-caption {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 10px 9px;
+  padding: 10px 12px;
   border-top: 1px solid var(--st-border);
   color: var(--st-text-soft);
   font-size: 11px;
@@ -345,17 +303,27 @@ onUnmounted(() => {
 .asset-caption-prompt {
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  color: var(--st-text);
+  font-size: 13px;
 }
 .asset-caption-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 6px;
   min-width: 0;
   color: var(--st-muted);
   font-size: 10px;
+}
+.asset-kind {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--st-surface);
+  color: var(--st-text-soft);
 }
 .asset-caption-model {
   min-width: 0;
@@ -365,31 +333,17 @@ onUnmounted(() => {
 }
 .asset-caption-meta time {
   flex-shrink: 0;
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
-/* Keep actions reachable on touch devices where hover never fires. */
-@media (hover: hover) and (min-width: 640px) {
-  .asset-overlay {
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-  .asset-card:hover .asset-overlay,
-  .asset-card:focus-within .asset-overlay {
-    opacity: 1;
-  }
-}
-@media (max-width: 420px) {
-  .asset-action-text {
-    display: none;
-  }
-  .asset-action {
-    padding: 0 8px;
+@media (pointer: coarse) {
+  .asset-actions :is(a, button) {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .asset-card,
-  .asset-overlay,
-  .asset-action {
+  .asset-card {
     transition: none;
   }
 }

@@ -108,10 +108,10 @@
             </div>
             <p class="studio-card-text">{{ p.prompt }}</p>
             <div class="studio-card-actions">
-              <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="useOnlineForImage(p)">
+              <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="fillPrompt('image', p.prompt)">
                 <Icon name="chat" size="xs" aria-hidden="true" />{{ t('canvas.useForImage') }}
               </button>
-              <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="useOnlineForVideo(p)">
+              <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="fillPrompt('video', p.prompt)">
                 <Icon name="play" size="xs" aria-hidden="true" />{{ t('canvas.useForVideo') }}
               </button>
               <button
@@ -141,10 +141,10 @@
             <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="copy(p)">
               <Icon name="copy" size="xs" aria-hidden="true" />{{ t('canvas.copy') }}
             </button>
-            <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="useForImage(p)">
+            <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="fillPrompt('image', p.content)">
               <Icon name="chat" size="xs" aria-hidden="true" />{{ t('canvas.useForImage') }}
             </button>
-            <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="useForVideo(p)">
+            <button type="button" class="studio-btn studio-btn--quiet studio-btn--sm" @click="fillPrompt('video', p.content)">
               <Icon name="play" size="xs" aria-hidden="true" />{{ t('canvas.useForVideo') }}
             </button>
             <button
@@ -232,10 +232,8 @@ import { useAppStore } from '@/stores/app'
 import { useStudioDialog } from '@/composables/useStudioDialog'
 import {
   prompts, loadPrompts, addPrompt, deletePrompt, recoverLegacyPrompts,
-  activeTab,
 } from '@/composables/useInfiniteCanvas'
-import { draftText as imagePrompt } from '@/composables/useChatDrawEngine'
-import { applyVideoPrompt } from '@/composables/useVideoStudioConversations'
+import { useStudioPromptHandoff } from '@/composables/useStudioPromptHandoff'
 import {
   sources, activeSourceId, activeSource, onlineSearch, filteredOnline,
   loadSource, rememberOnlinePrompt, type OnlinePrompt,
@@ -244,6 +242,7 @@ import './studio-shell.css'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { fillPrompt } = useStudioPromptHandoff()
 
 const search = ref('')
 const view = ref<'mine' | 'online'>('mine')
@@ -283,26 +282,6 @@ async function copy(p: { content: string }) {
   } catch {
     appStore.showError(t('common.copyFailed'))
   }
-}
-function useForImage(p: { content: string }) {
-  imagePrompt.value = p.content.slice(0, 4000)
-  activeTab.value = 'chat'
-  appStore.showSuccess(t('canvas.sentToImage'))
-}
-async function useForVideo(p: { content: string }) {
-  if (!await applyVideoPrompt(p.content)) return
-  activeTab.value = 'video'
-  appStore.showSuccess(t('canvas.sentToVideo'))
-}
-function useOnlineForImage(p: OnlinePrompt) {
-  imagePrompt.value = p.prompt.slice(0, 4000)
-  activeTab.value = 'chat'
-  appStore.showSuccess(t('canvas.sentToImage'))
-}
-async function useOnlineForVideo(p: OnlinePrompt) {
-  if (!await applyVideoPrompt(p.prompt)) return
-  activeTab.value = 'video'
-  appStore.showSuccess(t('canvas.sentToVideo'))
 }
 async function recoverPrompts() {
   if (!window.confirm(t('canvas.recoverPromptsConfirm'))) return

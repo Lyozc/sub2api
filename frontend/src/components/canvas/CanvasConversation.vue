@@ -23,14 +23,16 @@
       <div class="text-chat-thread">
         <div ref="scroller" class="studio-scroll text-chat-messages" role="log" :aria-label="t('studioChat.messages')" aria-live="polite" @scroll="trackScroll">
           <div v-if="!chatReady && !chatStorageError" class="studio-empty" role="status"><p class="studio-note">{{ t('studioChat.loading') }}</p></div>
-          <div v-else-if="!activeChat?.messages.length" class="chat-welcome">
-            <span class="studio-empty-mark" aria-hidden="true"><Icon name="chat" size="lg" /></span>
-            <h2 class="studio-empty-title">{{ t('studioChat.welcome') }}</h2><p class="studio-empty-text">{{ t('studioChat.description') }}</p>
-            <div v-if="!chatOptionsLoading && !chatKeys.length" class="chat-no-key"><p>{{ t('studioChat.noKeys') }}</p><RouterLink class="studio-btn studio-btn--primary" to="/keys">{{ t('studioChat.manageKeys') }}</RouterLink></div>
-            <div v-else class="chat-examples">
-              <div class="chat-example-heading"><span></span>{{ t('studioChat.tryExamples') }}<span></span></div>
-              <ul><li v-for="key in ['brainstorm', 'write', 'explain'] as const" :key="key"><button type="button" @click="applyExample(key)"><Icon name="sparkles" size="xs" /><span>{{ t(`studioChat.examples.${key}.prompt`) }}</span><Icon name="arrowRight" size="xs" /></button></li></ul>
+          <div v-else-if="!activeChat?.messages.length" class="studio-start">
+            <div class="studio-start-heading">
+              <span class="studio-start-icon" aria-hidden="true"><Icon name="chat" size="lg" /></span>
+              <h2>{{ t('studioChat.welcome') }}</h2>
             </div>
+            <div v-if="!chatOptionsLoading && !chatKeys.length" class="chat-no-key">
+              <p>{{ t('studioChat.noKeys') }}</p>
+              <RouterLink class="studio-btn studio-btn--primary" to="/keys">{{ t('studioChat.manageKeys') }}</RouterLink>
+            </div>
+            <StudioPromptSuggestions v-else :label="t('studioChat.tryExamples')" :options="examples" @pick="applyExample" />
           </div>
           <div v-else class="chat-message-list">
             <StudioChatMessageRow
@@ -76,6 +78,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 import Icon from '@/components/icons/Icon.vue'
+import StudioPromptSuggestions from './StudioPromptSuggestions.vue'
 import StudioChatHistory from './StudioChatHistory.vue'
 import StudioChatMessageRow from './StudioChatMessageRow.vue'
 import { useAppStore } from '@/stores/app'
@@ -131,7 +134,17 @@ watch([
   if (atBottom.value) { await nextTick(); scrollToBottom() }
 }, { flush: 'post' })
 function onKeydown(event: KeyboardEvent) { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (canSend.value) void sendChat() } }
-function applyExample(key: 'brainstorm' | 'write' | 'explain') { draft.value = t(`studioChat.examples.${key}.prompt`); input.value?.focus() }
+const exampleIcons = { brainstorm: 'lightbulb', write: 'edit', explain: 'book' } as const
+const examples = computed(() => (['brainstorm', 'write', 'explain'] as const).map(key => ({
+  title: t(`studioChat.examples.${key}.title`),
+  prompt: t(`studioChat.examples.${key}.prompt`),
+  icon: exampleIcons[key]
+})))
+function applyExample(prompt: string) {
+  if (draft.value.trim() && draft.value !== prompt && !window.confirm(t('canvas.replaceDraftConfirm', { destination: t('canvas.tabConversation') }))) return
+  draft.value = prompt
+  input.value?.focus()
+}
 async function reloadHistory() { if (!window.confirm(t('studioChat.reloadConfirm'))) return; await reloadChatHistory() }
 async function copy(id: string, text: string) {
   let element: HTMLTextAreaElement | undefined
@@ -178,16 +191,6 @@ onUnmounted(() => messageResize?.disconnect())
 .text-chat-background { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px; font-size: 12px; background: var(--st-accent-soft); color: var(--st-accent-text); }
 .text-chat-thread { display: flex; position: relative; flex: 1; min-height: 0; }
 .text-chat-messages { width: 100%; min-height: 0; padding: 16px 24px 24px; scroll-behavior: auto; }
-.chat-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 46vh; padding: 32px 8px; text-align: center; }
-.chat-welcome h2 { font-size: clamp(1.25rem, 3.2vw, 1.65rem); }
-.chat-examples { width: 100%; max-width: 576px; margin-top: 28px; }
-.chat-example-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 11px; font-weight: 600; color: var(--st-muted); }
-.chat-example-heading > span { height: 1px; flex: 1; background: var(--st-border); }
-.chat-examples ul { display: grid; list-style: none; gap: 8px; margin: 0; padding: 0; }
-.chat-examples button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--st-border); border-radius: 12px; background: var(--st-panel); color: var(--st-text-soft); font-size: 12.5px; line-height: 1.6; text-align: left; }
-.chat-examples button:hover { border-color: var(--st-accent-border); color: var(--st-text); }
-.chat-examples button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.chat-examples button > svg { flex-shrink: 0; color: var(--st-accent); }
 .chat-no-key { margin-top: 20px; display: grid; gap: 12px; justify-items: center; color: var(--st-text-soft); font-size: 13px; }
 .chat-message-list { display: flex; flex-direction: column; gap: 20px; max-width: 832px; margin: 0 auto; }
 .text-chat-composer { position: relative; flex-shrink: 0; padding: 4px 16px 12px; }
@@ -214,7 +217,7 @@ onUnmounted(() => messageResize?.disconnect())
 .chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5; width: 40px; height: 40px; border: 1px solid var(--st-border); border-radius: 50%; background: var(--st-panel); box-shadow: var(--st-shadow); }
 .chat-history-overlay { position: fixed; inset: 0; z-index: 260; padding: 12px; background: #0f172a80; }
 .chat-history-drawer { height: 100%; max-height: calc(100dvh - 24px); width: min(352px, 88vw); display: flex; flex-direction: column; padding: 12px; box-shadow: var(--st-shadow-lg); }
-.chat-examples button:focus-visible, .chat-submit:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 2px; }
+.chat-submit:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 2px; }
 @media (max-width: 1023px) {
   .text-chat-sidebar, .text-chat-sidebar-toggle { display: none; }
   .text-chat-history-toggle { display: inline-grid; }

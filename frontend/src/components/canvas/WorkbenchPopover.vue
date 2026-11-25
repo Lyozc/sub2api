@@ -146,7 +146,12 @@ defineExpose({ open, close, isOpen })
       tabindex="-1"
       :style="style"
     >
-      <slot :close="close" />
+      <div class="wb-popover-body">
+        <slot :close="close" />
+      </div>
+      <div v-if="$slots.footer" class="wb-popover-footer">
+        <slot name="footer" :close="close" />
+      </div>
     </div>
   </div>
 </template>
@@ -198,17 +203,29 @@ defineExpose({ open, close, isOpen })
 .wb-popover-panel {
   position: fixed;
   z-index: 60;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 14px;
+  overflow: hidden;
   border: 1px solid var(--vs-border);
   border-radius: 14px;
   background: var(--vs-panel);
   color: var(--vs-text);
   box-shadow: var(--st-shadow, 0 18px 40px -20px rgba(16, 24, 40, 0.45));
+}
+.wb-popover-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
   scrollbar-width: thin;
   scrollbar-color: var(--vs-border-strong) transparent;
+}
+.wb-popover-footer {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vs-border);
+  background: var(--vs-bg);
 }
 .wb-popover-panel:focus {
   outline: none;

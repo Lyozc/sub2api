@@ -218,14 +218,15 @@ registerVideoTaskPersistence(async () => {
 })
 
 /** Explicit handoff waits for drafts to initialize, rather than racing a mount. */
-export async function applyVideoPrompt(value: string) {
+export async function applyVideoPrompt(value: string, acceptDraft?: (current: string) => boolean) {
   const version = epoch, owner = sessionOwnerKey()
   await initVideoConversations()
   if (version !== epoch || owner !== sessionOwnerKey() || !conversationsReady.value) return false
+  if (acceptDraft && !acceptDraft(prompt.value)) return false
   if (!activeConversation.value) newVideoConversation()
   prompt.value = value.slice(0, 4000)
   await persistConversations()
-  return true
+  return version === epoch && owner === sessionOwnerKey()
 }
 
 let syncing = false
