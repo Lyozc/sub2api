@@ -179,7 +179,7 @@ func (h *OpenAIGatewayHandler) DreaminaStudioQuotes(c *gin.Context) {
 		}
 		var validationError error
 		if model == nil {
-			validationError = errors.New("Seedance model is unavailable on this relay")
+			validationError = errors.New("requested Seedance model is unavailable on this relay")
 		} else {
 			validationError = model.ValidateVideo(plan)
 		}

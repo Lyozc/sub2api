@@ -52,10 +52,10 @@ func TestStudioChatUpstreamHTTP2Reset(t *testing.T) {
 			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true}}
 			run := func(events ...string) (*OpenAIForwardResult, error) {
 				var stream strings.Builder
-				stream.WriteString(": heartbeat\n\n")
+				_, _ = stream.WriteString(": heartbeat\n\n")
 				for _, event := range events {
 					if event != "" {
-						stream.WriteString("data: " + event + "\n\n")
+						_, _ = stream.WriteString("data: " + event + "\n\n")
 					}
 				}
 				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(stream.String()))}

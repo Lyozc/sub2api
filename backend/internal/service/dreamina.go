@@ -173,7 +173,7 @@ func (s *OpenAIGatewayService) DreaminaVideoContent(ctx context.Context, account
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, readDreaminaError(resp)
 	}
 	contentType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -205,7 +205,7 @@ func (s *OpenAIGatewayService) dreaminaJSON(ctx context.Context, account *Accoun
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, readDreaminaError(resp)
 	}

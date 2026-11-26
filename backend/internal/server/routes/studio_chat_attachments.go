@@ -48,13 +48,13 @@ func studioChatGatewayMessages(messages []studioChatMessage) ([]studioChatGatewa
 	result := make([]studioChatGatewayMessage, 0, len(messages))
 	textLength, fileBytes := 0, 0
 	for i, message := range messages {
-		if message.Role != "user" && message.Role != "assistant" && !(message.Role == "system" && i == 0) {
-			return nil, errors.New("Invalid message role")
+		if message.Role != "user" && message.Role != "assistant" && (message.Role != "system" || i != 0) {
+			return nil, errors.New("invalid message role")
 		}
 		length := utf8.RuneCountInString(message.Content)
 		textLength += length
 		if length > 32000 || textLength > 200000 {
-			return nil, errors.New("Message text is too long")
+			return nil, errors.New("message text is too long")
 		}
 		out := studioChatGatewayMessage{Role: message.Role, Content: message.Content}
 		if len(message.Attachments) == 0 {

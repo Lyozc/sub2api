@@ -49,7 +49,9 @@ func TestDreaminaTransportLifecycle(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.True(t, token.Valid)
-		require.Equal(t, "access", token.Claims.(jwt.MapClaims)["iss"])
+		claims, ok := token.Claims.(jwt.MapClaims)
+		require.True(t, ok)
+		require.Equal(t, "access", claims["iss"])
 
 		path := strings.TrimPrefix(req.URL.Path, prefix)
 		require.NotEqual(t, req.URL.Path, path)
@@ -133,7 +135,7 @@ func TestDreaminaTransportLifecycle(t *testing.T) {
 
 	content, err := service.DreaminaVideoContent(ctx, account, task.ID)
 	require.NoError(t, err)
-	defer content.Body.Close()
+	defer func() { require.NoError(t, content.Body.Close()) }()
 	raw, err := io.ReadAll(content.Body)
 	require.NoError(t, err)
 	require.Equal(t, video, string(raw))
