@@ -38,6 +38,7 @@ func RegisterImageStudioRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	groupModelAllowlist := middleware.GroupModelAllowlist()
+	rejectConflictingFields := middleware.RejectConflictingRequestFields()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	requireGroup := middleware.RequireGroupAssignment(settingService, middleware.OpenAIErrorWriter)
 	billableUsageResponse := middleware.BillableUsageResponse()
@@ -127,7 +128,7 @@ func RegisterImageStudioRoutes(
 		return []gin.HandlerFunc{
 			prepare, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm,
 			gin.HandlerFunc(apiKeyAuth), assetInline, billableUsageResponse,
-			groupModelAllowlist, compositeTarget, requireGroup, target,
+			groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroup, target,
 		}
 	}
 

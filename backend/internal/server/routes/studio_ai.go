@@ -39,6 +39,7 @@ func RegisterStudioAIRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	groupModelAllowlist := middleware.GroupModelAllowlist()
+	rejectConflictingFields := middleware.RejectConflictingRequestFields()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	requireGroup := middleware.RequireGroupAssignment(settingService, middleware.OpenAIErrorWriter)
 	billableUsageResponse := middleware.BillableUsageResponse()
@@ -123,9 +124,9 @@ func RegisterStudioAIRoutes(
 		}
 		ai.POST("/ai-prompt", bodyLimit, prepare, clientRequestID, opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
-			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
+			groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroup, chatTarget)
 		ai.POST("/chat", middleware.RequestBodyLimit(min(cfg.Gateway.MaxBodySize, studioChatWireBytes)), prepareStudioChat(apiKeyService), clientRequestID, studioChatKeepalive(time.Duration(cfg.Gateway.StreamKeepaliveInterval)*time.Second), opsErrorLogger,
 			endpointNorm, gin.HandlerFunc(apiKeyAuth), billableUsageResponse,
-			groupModelAllowlist, compositeTarget, requireGroup, chatTarget)
+			groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroup, chatTarget)
 	}
 }

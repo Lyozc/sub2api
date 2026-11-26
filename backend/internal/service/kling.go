@@ -243,7 +243,7 @@ func (s *OpenAIGatewayService) ForwardKling(ctx context.Context, c *gin.Context,
 			req.Header.Set("Idempotency-Key", key)
 		}
 	}
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	var resp *http.Response
 	if s != nil && s.httpUpstream != nil {
 		proxyURL := ""

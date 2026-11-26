@@ -37,6 +37,7 @@ func RegisterVideoStudioRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	groupModelAllowlist := middleware.GroupModelAllowlist()
+	rejectConflictingFields := middleware.RejectConflictingRequestFields()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	requireGroup := middleware.RequireGroupAssignment(settingService, middleware.OpenAIErrorWriter)
 	billableUsageResponse := middleware.BillableUsageResponse()
@@ -166,9 +167,13 @@ func RegisterVideoStudioRoutes(
 			c.Request.Header.Set("Authorization", "Bearer "+apiKey.Key)
 			c.Next()
 		}
+		validateFields := rejectConflictingFields
+		if canonicalPath == "/dreamina/v1/assets" {
+			validateFields = func(c *gin.Context) { c.Next() }
+		}
 		return []gin.HandlerFunc{
 			prepare, limit, clientRequestID, opsErrorLogger, endpointNorm,
-			gin.HandlerFunc(apiKeyAuth), billableUsageResponse, groupModelAllowlist,
+			gin.HandlerFunc(apiKeyAuth), billableUsageResponse, groupModelAllowlist, validateFields,
 			compositeTarget, requireGroup, target,
 		}
 	}

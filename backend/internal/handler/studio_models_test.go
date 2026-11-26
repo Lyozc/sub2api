@@ -55,9 +55,13 @@ type studioModelsEndpointForTest struct {
 var studioModelsEndpointsForTest = []studioModelsEndpointForTest{
 	{"image/openai", service.PlatformOpenAI, service.PlatformOpenAI, "gpt-image-1", (*GatewayHandler).ImageStudioModels},
 	{"image/grok", service.PlatformGrok, service.PlatformGrok, "grok-imagine-image", (*GatewayHandler).ImageStudioModels},
-	{"video/grok", service.PlatformGrok, service.PlatformGrok, "grok-imagine-video", (*GatewayHandler).VideoStudioModels},
-	{"video/composite", service.PlatformComposite, service.PlatformGrok, "grok-imagine-video", (*GatewayHandler).VideoStudioModels},
-	{"video/kling", service.PlatformKling, service.PlatformKling, "kling-v3", (*GatewayHandler).VideoStudioModels},
+	{"video/grok", service.PlatformGrok, service.PlatformGrok, "grok-imagine-video", videoStudioModelsForTest},
+	{"video/composite", service.PlatformComposite, service.PlatformGrok, "grok-imagine-video", videoStudioModelsForTest},
+	{"video/kling", service.PlatformKling, service.PlatformKling, "kling-v3", videoStudioModelsForTest},
+}
+
+func videoStudioModelsForTest(h *GatewayHandler, c *gin.Context, keys *service.APIKeyService) {
+	h.VideoStudioModels(c, keys, nil)
 }
 
 func TestStudioModels_KlingVideoCatalogExcludesImageModels(t *testing.T) {
